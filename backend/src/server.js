@@ -6,8 +6,11 @@ import express from "express";
 import cors from "cors";
 
 import connectDB from "./config/db.js";
+import authRoutes from "./routes/authRoutes.js";
 
 const app = express();
+
+console.log("Mongo URI exists:", !!process.env.MONGO_URI);
 
 connectDB();
 
@@ -22,9 +25,11 @@ app.use(express.json());
 
 app.get("/", (req, res) => {
     res.json({
-        message: "Network Support Tracker API is running"
+        message: "Support Renewal Tracker API is running"
     });
 });
+
+app.use("/api/auth", authRoutes);
 
 const PORT = process.env.PORT || 5000;
 
