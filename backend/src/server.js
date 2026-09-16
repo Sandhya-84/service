@@ -7,7 +7,7 @@ import cors from "cors";
 
 import connectDB from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
-import customerRoutes from "./routes/customerRoutes.js";
+import networkUnitRoutes from "./routes/networkUnitRoutes.js";
 
 const app = express();
 
@@ -31,7 +31,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
-app.use("/api/customers", customerRoutes);
+app.use("/api/network-units", networkUnitRoutes);
 
 const PORT = process.env.PORT || 5000;
 
