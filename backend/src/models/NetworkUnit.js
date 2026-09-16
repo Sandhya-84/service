@@ -2,10 +2,15 @@ import mongoose from "mongoose";
 
 const networkUnitSchema = new mongoose.Schema(
     {
+        purchaseOrderId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "PurchaseOrder",
+            required: true
+        },
+
         unitCode: {
             type: String,
             required: true,
-            unique: true,
             trim: true
         },
 
@@ -17,39 +22,21 @@ const networkUnitSchema = new mongoose.Schema(
         radioConfiguration: {
             type: String,
             trim: true
-        },
-
-        poNumber: {
-            type: String,
-            trim: true
-        },
-
-        invoiceNumber: {
-            type: String,
-            trim: true
-        },
-
-        supportExpiryDate: {
-            type: Date
-        },
-
-        team: {
-            type: String,
-            trim: true
-        },
-
-        notes: {
-            type: String,
-            trim: true
-        },
-
-        renewed: {
-            type: Boolean,
-            default: false
         }
     },
     {
         timestamps: true
+    }
+);
+
+networkUnitSchema.index(
+    {
+        purchaseOrderId: 1,
+        unitCode: 1,
+        hostname: 1
+    },
+    {
+        unique: true
     }
 );
 
