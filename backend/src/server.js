@@ -13,6 +13,7 @@ import purchaseOrderRoutes from "./routes/purchaseOrderRoutes.js";
 import networkUnitRoutes from "./routes/networkUnitRoutes.js";
 import renewalHistoryRoutes from "./routes/renewalHistoryRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 
 const app = express();
 
@@ -50,6 +51,9 @@ app.use("/api/network-units", networkUnitRoutes);
 app.use("/api/renewal-history", renewalHistoryRoutes);
 
 app.use("/api/import", importRoutes);
+
+app.use("/api/dashboard",dashboardRoutes);
+
 
 
 
