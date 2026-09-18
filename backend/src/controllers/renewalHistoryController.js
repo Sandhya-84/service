@@ -5,20 +5,17 @@ export const createRenewalHistory = async (req, res) => {
     try {
         const {
             purchaseOrderId,
-            oldExpiryDate,
             newExpiryDate,
             renewedBy,
             notes
         } = req.body;
 
-        if (!purchaseOrderId || !oldExpiryDate || !newExpiryDate) {
+        if (!purchaseOrderId || !newExpiryDate) {
             return res.status(400).json({
-                message:
-                    "Purchase order, old expiry date and new expiry date are required"
+                message: "Purchase order and new expiry date are required"
             });
         }
 
-        // Check whether purchase order exists
         const purchaseOrder = await PurchaseOrder.findById(
             purchaseOrderId
         );
@@ -29,17 +26,38 @@ export const createRenewalHistory = async (req, res) => {
             });
         }
 
-        // Create renewal history
+        if (!purchaseOrder.supportExpiryDate) {
+            return res.status(400).json({
+                message: "Purchase order does not have an existing expiry date"
+            });
+        }
+
+        const oldExpiryDate =
+            purchaseOrder.supportExpiryDate;
+
+        const newDate = new Date(newExpiryDate);
+
+        if (isNaN(newDate.getTime())) {
+            return res.status(400).json({
+                message: "Invalid new expiry date"
+            });
+        }
+
+        if (newDate <= oldExpiryDate) {
+            return res.status(400).json({
+                message: "New expiry date must be later than the current expiry date"
+            });
+        }
+
         const renewalHistory = await RenewalHistory.create({
             purchaseOrderId,
             oldExpiryDate,
-            newExpiryDate,
-            renewedBy,
-            notes
+            newExpiryDate: newDate,
+            renewedBy: renewedBy || undefined,
+            notes: notes || ""
         });
 
-        // Update current expiry date of the PO
-        purchaseOrder.supportExpiryDate = newExpiryDate;
+        purchaseOrder.supportExpiryDate = newDate;
         purchaseOrder.renewed = true;
 
         await purchaseOrder.save();
@@ -51,6 +69,11 @@ export const createRenewalHistory = async (req, res) => {
         });
 
     } catch (error) {
+        console.error(
+            "Create renewal history error:",
+            error
+        );
+
         res.status(500).json({
             message: "Failed to record renewal",
             error: error.message
