@@ -4,11 +4,11 @@ import {
     createRenewalHistory,
     getRenewalHistory
 } from "../controllers/renewalHistoryController.js";
-
+import authMiddleware from "../middleware/authMiddleware.js";
 const router = express.Router();
 
-router.post("/", createRenewalHistory);
+router.post("/",authMiddleware, createRenewalHistory);
 
-router.get("/", getRenewalHistory);
+router.get("/",authMiddleware, getRenewalHistory);
 
 export default router;

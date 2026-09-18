@@ -2,14 +2,17 @@ import express from "express";
 import multer from "multer";
 
 import { importExcelData } from "../services/excelImportService.js";
-
+import { getImportHistory } from "../controllers/importController.js";
+import authMiddleware from "../middleware/authMiddleware.js";
 const router = express.Router();
 
 const upload = multer({
     storage: multer.memoryStorage(),
+
     limits: {
         fileSize: 10 * 1024 * 1024
     },
+
     fileFilter: (req, file, cb) => {
         const allowedExtensions = [".xlsx", ".xls"];
 
@@ -28,7 +31,8 @@ const upload = multer({
 });
 
 
-router.post("/excel", upload.single("file"), async (req, res) => {
+// Excel upload
+router.post("/excel",authMiddleware, upload.single("file"), async (req, res) => {
     try {
 
         if (!req.file) {
@@ -57,6 +61,10 @@ router.post("/excel", upload.single("file"), async (req, res) => {
         });
     }
 });
+
+
+// Import history
+router.get("/history", authMiddleware,getImportHistory);
 
 
 export default router;
