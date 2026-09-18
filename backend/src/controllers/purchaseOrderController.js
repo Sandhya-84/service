@@ -90,3 +90,44 @@ export const getPurchaseOrders = async (req, res) => {
         });
     }
 };
+export const updatePurchaseOrder = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { team, notes, renewed } = req.body;
+
+        const purchaseOrder = await PurchaseOrder.findById(id);
+
+        if (!purchaseOrder) {
+            return res.status(404).json({
+                message: "Purchase order not found"
+            });
+        }
+
+        if (team !== undefined) {
+            purchaseOrder.team = team;
+        }
+
+        if (notes !== undefined) {
+            purchaseOrder.notes = notes;
+        }
+
+        if (renewed !== undefined) {
+            purchaseOrder.renewed = renewed;
+        }
+
+        await purchaseOrder.save();
+
+        res.status(200).json({
+            message: "Purchase order updated successfully",
+            purchaseOrder
+        });
+
+    } catch (error) {
+        console.error("Update purchase order error:", error);
+
+        res.status(500).json({
+            message: "Failed to update purchase order",
+            error: error.message
+        });
+    }
+};

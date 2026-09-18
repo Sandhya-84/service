@@ -2,7 +2,8 @@ import express from "express";
 
 import {
     createPurchaseOrder,
-    getPurchaseOrders
+    getPurchaseOrders,
+    updatePurchaseOrder
 } from "../controllers/purchaseOrderController.js";
 
 const router = express.Router();
@@ -10,5 +11,7 @@ const router = express.Router();
 router.post("/", createPurchaseOrder);
 
 router.get("/", getPurchaseOrders);
+
+router.put("/:id", updatePurchaseOrder);
 
 export default router;

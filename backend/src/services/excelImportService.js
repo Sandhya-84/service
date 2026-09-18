@@ -32,7 +32,11 @@ const findHeaderRow = (sheet) => {
 
 
 const parseDate = (value) => {
-    if (!value) {
+    if (
+        value === undefined ||
+        value === null ||
+        value === ""
+    ) {
         return null;
     }
 
@@ -65,7 +69,10 @@ const parseDate = (value) => {
 
 
 const cleanValue = (value) => {
-    if (value === undefined || value === null) {
+    if (
+        value === undefined ||
+        value === null
+    ) {
         return "";
     }
 
@@ -74,9 +81,29 @@ const cleanValue = (value) => {
 
 
 const getColumnValue = (row, possibleNames) => {
+    const normalizedRow = {};
+
+    Object.keys(row).forEach((key) => {
+        const normalizedKey = String(key)
+            .trim()
+            .toLowerCase();
+
+        normalizedRow[normalizedKey] = row[key];
+    });
+
     for (const name of possibleNames) {
-        if (row[name] !== undefined && row[name] !== "") {
-            return row[name];
+        const normalizedName = String(name)
+            .trim()
+            .toLowerCase();
+
+        const value = normalizedRow[normalizedName];
+
+        if (
+            value !== undefined &&
+            value !== null &&
+            String(value).trim() !== ""
+        ) {
+            return value;
         }
     }
 
@@ -84,7 +111,10 @@ const getColumnValue = (row, possibleNames) => {
 };
 
 
-export const importExcelData = async (buffer, fileName) => {
+export const importExcelData = async (
+    buffer,
+    fileName
+) => {
 
     const workbook = XLSX.read(buffer, {
         type: "buffer",
@@ -102,12 +132,12 @@ export const importExcelData = async (buffer, fileName) => {
 
     try {
 
-        // Process every sheet in the workbook
         for (const sheetName of workbook.SheetNames) {
 
             const sheet = workbook.Sheets[sheetName];
 
-            const headerRowIndex = findHeaderRow(sheet);
+            const headerRowIndex =
+                findHeaderRow(sheet);
 
             if (headerRowIndex === -1) {
                 console.log(
@@ -117,91 +147,87 @@ export const importExcelData = async (buffer, fileName) => {
                 continue;
             }
 
-            const rows = XLSX.utils.sheet_to_json(sheet, {
-                range: headerRowIndex,
-                defval: ""
-            });
+            const rows =
+                XLSX.utils.sheet_to_json(sheet, {
+                    range: headerRowIndex,
+                    defval: ""
+                });
 
             if (rows.length === 0) {
                 continue;
             }
 
-
-            // Sheet name = Customer name
-            const customerName = cleanValue(sheetName);
+            const customerName =
+                cleanValue(sheetName);
 
             if (!customerName) {
                 continue;
             }
 
-
-            // Find or create customer
-            let customer = await Customer.findOne({
-                name: customerName
-            });
-
-            if (!customer) {
-                customer = await Customer.create({
+            let customer =
+                await Customer.findOne({
                     name: customerName
                 });
+
+            if (!customer) {
+                customer =
+                    await Customer.create({
+                        name: customerName
+                    });
 
                 totalCustomers++;
             }
 
-
-            // Values from merged Excel cells may be blank.
-            // Keep the previous PO-level value.
             let currentPO = "";
             let currentInvoice = "";
             let currentExpiry = null;
 
-
             for (const row of rows) {
 
-                const unitCode = cleanValue(
+                const unitCode =
+                    cleanValue(
+                        getColumnValue(row, [
+                            "Unit"
+                        ])
+                    );
+
+                const hostname =
+                    cleanValue(
+                        getColumnValue(row, [
+                            "Hostname"
+                        ])
+                    );
+
+                const radioConfiguration =
+                    cleanValue(
+                        getColumnValue(row, [
+                            "Radio Configuration"
+                        ])
+                    );
+
+                const poValue =
+                    cleanValue(
+                        getColumnValue(row, [
+                            "PO-Details",
+                            "PO Details",
+                            "PO",
+                            "PO Number",
+                            "poNumber"
+                        ])
+                    );
+
+                const invoiceValue =
+                    cleanValue(
+                        getColumnValue(row, [
+                            "Invoice Number"
+                        ])
+                    );
+
+                const expiryValue =
                     getColumnValue(row, [
-                        "Unit",
-                        "unit"
-                    ])
-                );
+                        "Support Expiry Date"
+                    ]);
 
-                const hostname = cleanValue(
-                    getColumnValue(row, [
-                        "Hostname",
-                        "hostname"
-                    ])
-                );
-
-                const radioConfiguration = cleanValue(
-                    getColumnValue(row, [
-                        "Radio configuration",
-                        "radio configuration"
-                    ])
-                );
-
-                const poValue = cleanValue(
-                    getColumnValue(row, [
-                        "PO-Details",
-                        "PO Details",
-                        "PO",
-                        "poNumber"
-                    ])
-                );
-
-                const invoiceValue = cleanValue(
-                    getColumnValue(row, [
-                        "Invoice Number",
-                        "invoice number"
-                    ])
-                );
-
-                const expiryValue = getColumnValue(row, [
-                    "Support Expiry Date",
-                    "support expiry date"
-                ]);
-
-
-                // Carry forward merged/blank PO cells
                 if (poValue) {
                     currentPO = poValue;
                 }
@@ -211,16 +237,22 @@ export const importExcelData = async (buffer, fileName) => {
                 }
 
                 if (expiryValue) {
-                    currentExpiry = parseDate(expiryValue);
+                    const parsedExpiry =
+                        parseDate(expiryValue);
+
+                    if (parsedExpiry) {
+                        currentExpiry =
+                            parsedExpiry;
+                    }
                 }
 
-
-                // Ignore completely empty rows
-                if (!unitCode && !hostname) {
+                if (
+                    !unitCode &&
+                    !hostname
+                ) {
                     continue;
                 }
 
-                // A unit without a PO cannot be linked correctly
                 if (!currentPO) {
                     console.log(
                         `Skipping unit without PO in sheet "${sheetName}"`
@@ -229,46 +261,55 @@ export const importExcelData = async (buffer, fileName) => {
                     continue;
                 }
 
-
-                // Find or create PO
-                let purchaseOrder = await PurchaseOrder.findOne({
-                    customerId: customer._id,
-                    poNumber: currentPO
-                });
-
+                let purchaseOrder =
+                    await PurchaseOrder.findOne({
+                        customerId: customer._id,
+                        poNumber: currentPO
+                    });
 
                 if (!purchaseOrder) {
 
-                    purchaseOrder = await PurchaseOrder.create({
-                        customerId: customer._id,
-                        poNumber: currentPO,
-                        invoiceNumber: currentInvoice,
-                        supportExpiryDate: currentExpiry
-                    });
+                    purchaseOrder =
+                        await PurchaseOrder.create({
+                            customerId:
+                                customer._id,
+
+                            poNumber:
+                                currentPO,
+
+                            invoiceNumber:
+                                currentInvoice,
+
+                            supportExpiryDate:
+                                currentExpiry
+                        });
 
                     totalPurchaseOrders++;
 
                 } else {
 
-                    // If expiry changed, save old expiry first
                     if (
                         currentExpiry &&
                         purchaseOrder.supportExpiryDate &&
                         purchaseOrder.supportExpiryDate.getTime() !==
-                        currentExpiry.getTime()
+                            currentExpiry.getTime()
                     ) {
 
                         await RenewalHistory.create({
-                            purchaseOrderId: purchaseOrder._id,
+                            purchaseOrderId:
+                                purchaseOrder._id,
+
                             oldExpiryDate:
                                 purchaseOrder.supportExpiryDate,
-                            newExpiryDate: currentExpiry,
-                            notes: `Imported from ${fileName}`
+
+                            newExpiryDate:
+                                currentExpiry,
+
+                            notes:
+                                `Imported from ${fileName}`
                         });
                     }
 
-
-                    // Update PO source fields
                     if (currentInvoice) {
                         purchaseOrder.invoiceNumber =
                             currentInvoice;
@@ -282,21 +323,26 @@ export const importExcelData = async (buffer, fileName) => {
                     await purchaseOrder.save();
                 }
 
+                let networkUnit =
+                    await NetworkUnit.findOne({
+                        purchaseOrderId:
+                            purchaseOrder._id,
 
-                // Find or create unit
-                let networkUnit = await NetworkUnit.findOne({
-                    purchaseOrderId: purchaseOrder._id,
-                    unitCode,
-                    hostname
-                });
+                        unitCode,
 
+                        hostname
+                    });
 
                 if (!networkUnit) {
 
                     await NetworkUnit.create({
-                        purchaseOrderId: purchaseOrder._id,
+                        purchaseOrderId:
+                            purchaseOrder._id,
+
                         unitCode,
+
                         hostname,
+
                         radioConfiguration
                     });
 
@@ -304,40 +350,51 @@ export const importExcelData = async (buffer, fileName) => {
 
                 } else {
 
-                    // Update unit information if Excel changed it
-                    networkUnit.hostname = hostname;
-                    networkUnit.radioConfiguration =
-                        radioConfiguration;
+                    networkUnit.hostname =
+                        hostname;
+
+                    if (radioConfiguration) {
+                        networkUnit.radioConfiguration =
+                            radioConfiguration;
+                    }
 
                     await networkUnit.save();
                 }
             }
         }
 
+        importRecord.totalCustomers =
+            totalCustomers;
 
-        // Update import record
-        importRecord.totalCustomers = totalCustomers;
         importRecord.totalPurchaseOrders =
             totalPurchaseOrders;
-        importRecord.totalUnits = totalUnits;
 
-        importRecord.status = "completed";
+        importRecord.totalUnits =
+            totalUnits;
+
+        importRecord.status =
+            "completed";
 
         await importRecord.save();
 
-
         return {
-            importId: importRecord._id,
+            importId:
+                importRecord._id,
+
             totalCustomers,
+
             totalPurchaseOrders,
+
             totalUnits
         };
 
-
     } catch (error) {
 
-        importRecord.status = "failed";
-        importRecord.errorMessage = error.message;
+        importRecord.status =
+            "failed";
+
+        importRecord.errorMessage =
+            error.message;
 
         await importRecord.save();
 
