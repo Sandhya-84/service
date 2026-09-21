@@ -474,180 +474,214 @@ const Dashboard = () => {
             />
 
 
+            {/* ================================================= */}
+            {/* MAIN AREA */}
+            {/* ================================================= */}
+
             <main
-                className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
+                className="
+                    ml-60
+                    mt-20
+                    min-h-screen
+                    px-4
+                    py-6
+                    sm:px-6
+                    lg:px-8
+                "
             >
 
-                {/* ========================= */}
-                {/* ERROR */}
-                {/* ========================= */}
-
-                {error && (
-
-                    <div
-                        className={
-                            darkMode
-                                ? "mb-6 rounded-xl border border-red-900 bg-red-950 p-4 text-sm text-red-300"
-                                : "mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-                        }
-                    >
-                        {error}
-                    </div>
-
-                )}
-
-
-                {/* ========================= */}
-                {/* STAT CARDS */}
-                {/* ========================= */}
-
-                <StatCards
-                    summary={summary}
-                    darkMode={darkMode}
-                />
-
-
-                {/* ========================= */}
-                {/* STATUS CHART */}
-                {/* ========================= */}
-
-                <StatusChart
-                    summary={summary}
-                    darkMode={darkMode}
-                />
-
-
-                {/* ========================= */}
-                {/* FILTERS */}
-                {/* ========================= */}
-
-                <DashboardFilters
-                    search={search}
-                    setSearch={setSearch}
-
-                    statusFilter={
-                        statusFilter
-                    }
-
-                    setStatusFilter={
-                        setStatusFilter
-                    }
-
-                    teamFilter={
-                        teamFilter
-                    }
-
-                    setTeamFilter={
-                        setTeamFilter
-                    }
-
-                    teams={teams}
-
-                    darkMode={darkMode}
-                />
-
-
-                {/* ========================= */}
-                {/* SHOW / COLLAPSE */}
-                {/* ========================= */}
+                {/* ================================================= */}
+                {/* CENTERED DASHBOARD CONTENT */}
+                {/* ================================================= */}
 
                 <div
-                    className="mb-4 flex flex-wrap justify-end gap-2"
+                    className="
+                        mx-auto
+                        w-full
+                        max-w-7xl
+                    "
                 >
 
-                    <button
-                        type="button"
-                        onClick={
-                            handleShowAll
-                        }
-                        className={
-                            darkMode
-                                ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                                : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                        }
-                    >
-                        Show All
-                    </button>
+                    {/* ========================= */}
+                    {/* ERROR */}
+                    {/* ========================= */}
 
-
-                    <button
-                        type="button"
-                        onClick={
-                            handleCollapseAll
-                        }
-                        className={
-                            darkMode
-                                ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                                : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                        }
-                    >
-                        Collapse All
-                    </button>
-
-                </div>
-
-
-                {/* ========================= */}
-                {/* CUSTOMER LIST */}
-                {/* ========================= */}
-
-                <div
-                    className="space-y-4"
-                >
-
-                    {filteredDashboardData.length > 0 ? (
-
-                        filteredDashboardData.map(
-                            (customer) => (
-
-                                <CustomerCard
-                                    key={
-                                        customer._id
-                                    }
-
-                                    customer={
-                                        customer
-                                    }
-
-                                    darkMode={
-                                        darkMode
-                                    }
-
-                                    expanded={
-                                        allCustomersExpanded
-                                    }
-
-                                    onPurchaseOrderUpdated={
-                                        handlePurchaseOrderUpdated
-                                    }
-                                />
-
-                            )
-                        )
-
-                    ) : (
+                    {error && (
 
                         <div
                             className={
                                 darkMode
-                                    ? "rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center"
-                                    : "rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"
+                                    ? "mb-6 rounded-xl border border-red-900 bg-red-950 p-4 text-sm text-red-300"
+                                    : "mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
                             }
                         >
-
-                            <p
-                                className={
-                                    darkMode
-                                        ? "text-slate-400"
-                                        : "text-slate-500"
-                                }
-                            >
-                                No matching purchase orders found.
-                            </p>
-
+                            {error}
                         </div>
 
                     )}
+
+
+                    {/* ========================= */}
+                    {/* STAT CARDS */}
+                    {/* ========================= */}
+
+                    <StatCards
+                        summary={summary}
+                        darkMode={darkMode}
+                    />
+
+
+                    {/* ========================= */}
+                    {/* STATUS CHART */}
+                    {/* ========================= */}
+
+                    <StatusChart
+                        summary={summary}
+                        darkMode={darkMode}
+                    />
+
+
+                    {/* ========================= */}
+                    {/* FILTERS */}
+                    {/* ========================= */}
+
+                    <DashboardFilters
+                        search={search}
+                        setSearch={setSearch}
+
+                        statusFilter={
+                            statusFilter
+                        }
+
+                        setStatusFilter={
+                            setStatusFilter
+                        }
+
+                        teamFilter={
+                            teamFilter
+                        }
+
+                        setTeamFilter={
+                            setTeamFilter
+                        }
+
+                        teams={teams}
+
+                        darkMode={darkMode}
+                    />
+
+
+                    {/* ========================= */}
+                    {/* SHOW / COLLAPSE */}
+                    {/* ========================= */}
+
+                    <div
+                        className="
+                            mb-4
+                            flex
+                            flex-wrap
+                            justify-end
+                            gap-2
+                        "
+                    >
+
+                        <button
+                            type="button"
+                            onClick={
+                                handleShowAll
+                            }
+                            className={
+                                darkMode
+                                    ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                                    : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                            }
+                        >
+                            Show All
+                        </button>
+
+
+                        <button
+                            type="button"
+                            onClick={
+                                handleCollapseAll
+                            }
+                            className={
+                                darkMode
+                                    ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+                                    : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                            }
+                        >
+                            Collapse All
+                        </button>
+
+                    </div>
+
+
+                    {/* ========================= */}
+                    {/* CUSTOMER LIST */}
+                    {/* ========================= */}
+
+                    <div
+                        className="
+                            space-y-4
+                        "
+                    >
+
+                        {filteredDashboardData.length > 0 ? (
+
+                            filteredDashboardData.map(
+                                (customer) => (
+
+                                    <CustomerCard
+                                        key={
+                                            customer._id
+                                        }
+
+                                        customer={
+                                            customer
+                                        }
+
+                                        darkMode={
+                                            darkMode
+                                        }
+
+                                        expanded={
+                                            allCustomersExpanded
+                                        }
+
+                                        onPurchaseOrderUpdated={
+                                            handlePurchaseOrderUpdated
+                                        }
+                                    />
+
+                                )
+                            )
+
+                        ) : (
+
+                            <div
+                                className={
+                                    darkMode
+                                        ? "rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center"
+                                        : "rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm"
+                                }
+                            >
+
+                                <p
+                                    className={
+                                        darkMode
+                                            ? "text-slate-400"
+                                            : "text-slate-500"
+                                    }
+                                >
+                                    No matching purchase orders found.
+                                </p>
+
+                            </div>
+
+                        )}
+
+                    </div>
 
                 </div>
 
