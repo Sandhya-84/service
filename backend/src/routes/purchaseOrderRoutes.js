@@ -5,13 +5,27 @@ import {
     getPurchaseOrders,
     updatePurchaseOrder
 } from "../controllers/purchaseOrderController.js";
+
 import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
-router.post("/", authMiddleware,createPurchaseOrder);
+router.post(
+    "/",
+    authMiddleware,
+    createPurchaseOrder
+);
 
-router.get("/", authMiddleware,getPurchaseOrders);
+router.get(
+    "/",
+    authMiddleware,
+    getPurchaseOrders
+);
 
-router.put("/:id",authMiddleware, updatePurchaseOrder);
+router.put(
+    "/:id",
+    authMiddleware,
+    updatePurchaseOrder
+);
 
 export default router;

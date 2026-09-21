@@ -23,6 +23,10 @@ const purchaseOrderSchema = new mongoose.Schema(
             type: Date
         },
 
+        nextRenewalDate: {
+            type: Date
+        },
+
         team: {
             type: String,
             trim: true,
@@ -40,19 +44,12 @@ const purchaseOrderSchema = new mongoose.Schema(
             default: false
         }
     },
-    {
-        timestamps: true
-    }
+    { timestamps: true }
 );
 
 purchaseOrderSchema.index(
-    {
-        customerId: 1,
-        poNumber: 1
-    },
-    {
-        unique: true
-    }
+    { customerId: 1, poNumber: 1 },
+    { unique: true }
 );
 
 const PurchaseOrder = mongoose.model(

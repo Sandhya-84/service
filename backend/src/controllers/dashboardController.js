@@ -3,44 +3,40 @@ import PurchaseOrder from "../models/PurchaseOrder.js";
 import NetworkUnit from "../models/NetworkUnit.js";
 
 
+// =====================================================
+// DASHBOARD SUMMARY
+// =====================================================
+
 export const getDashboardSummary = async (req, res) => {
     try {
+        const customersCount = await Customer.countDocuments();
 
-        // Total counts
-        const totalCustomers = await Customer.countDocuments();
-
-        const totalPurchaseOrders =
+        const purchaseOrdersCount =
             await PurchaseOrder.countDocuments();
 
-        const totalUnits =
+        const networkUnitsCount =
             await NetworkUnit.countDocuments();
 
-
-        // Today's date
         const today = new Date();
 
         today.setHours(0, 0, 0, 0);
 
-
-        // Date after 30 days
         const thirtyDaysFromNow = new Date(today);
 
         thirtyDaysFromNow.setDate(
             thirtyDaysFromNow.getDate() + 30
         );
 
-
-        // Expired
-        const expired =
+        // Active
+        const activeCount =
             await PurchaseOrder.countDocuments({
                 supportExpiryDate: {
-                    $lt: today
+                    $gt: thirtyDaysFromNow
                 }
             });
 
-
-        // Expiring within next 30 days
-        const expiringSoon =
+        // Expiring within 30 days
+        const expiringCount =
             await PurchaseOrder.countDocuments({
                 supportExpiryDate: {
                     $gte: today,
@@ -48,8 +44,84 @@ export const getDashboardSummary = async (req, res) => {
                 }
             });
 
+        // Expired
+        const expiredCount =
+            await PurchaseOrder.countDocuments({
+                supportExpiryDate: {
+                    $lt: today
+                }
+            });
 
-        // Active = expiry date more than 30 days away
+        // No expiry date
+        const noExpiryCount =
+            await PurchaseOrder.countDocuments({
+                $or: [
+                    {
+                        supportExpiryDate: {
+                            $exists: false
+                        }
+                    },
+                    {
+                        supportExpiryDate: null
+                    }
+                ]
+            });
+
+       res.status(200).json({
+    message: "Dashboard summary fetched successfully",
+
+    customers: customersCount,
+    purchaseOrders: purchaseOrdersCount,
+    networkUnits: networkUnitsCount,
+    active: activeCount,
+    expiring: expiringCount,
+    expired: expiredCount,
+    noExpiryDate: noExpiryCount,
+
+    summary: {
+        customers: customersCount,
+        purchaseOrders: purchaseOrdersCount,
+        networkUnits: networkUnitsCount,
+        active: activeCount,
+        expiring: expiringCount,
+        expired: expiredCount,
+        noExpiryDate: noExpiryCount
+    }
+});
+
+    } catch (error) {
+
+        console.error(
+            "Dashboard summary error:",
+            error
+        );
+
+        res.status(500).json({
+            message: "Failed to fetch dashboard summary",
+            error: error.message
+        });
+    }
+};
+
+
+// =====================================================
+// DASHBOARD STATUS
+// =====================================================
+
+export const getDashboardStatus = async (req, res) => {
+    try {
+
+        const today = new Date();
+
+        today.setHours(0, 0, 0, 0);
+
+        const thirtyDaysFromNow = new Date(today);
+
+        thirtyDaysFromNow.setDate(
+            thirtyDaysFromNow.getDate() + 30
+        );
+
+
         const active =
             await PurchaseOrder.countDocuments({
                 supportExpiryDate: {
@@ -58,7 +130,23 @@ export const getDashboardSummary = async (req, res) => {
             });
 
 
-        // No expiry date
+        const expiring =
+            await PurchaseOrder.countDocuments({
+                supportExpiryDate: {
+                    $gte: today,
+                    $lte: thirtyDaysFromNow
+                }
+            });
+
+
+        const expired =
+            await PurchaseOrder.countDocuments({
+                supportExpiryDate: {
+                    $lt: today
+                }
+            });
+
+
         const noExpiryDate =
             await PurchaseOrder.countDocuments({
                 $or: [
@@ -75,75 +163,24 @@ export const getDashboardSummary = async (req, res) => {
 
 
         res.status(200).json({
-            message: "Dashboard summary fetched successfully",
 
-            summary: {
-                totalCustomers,
-                totalPurchaseOrders,
-                totalUnits,
+            message: "Dashboard status fetched successfully",
+
+            status: {
                 active,
-                expiringSoon,
+                expiring,
                 expired,
                 noExpiryDate
             }
+
         });
 
     } catch (error) {
 
         console.error(
-            "Dashboard summary error:",
+            "Dashboard status error:",
             error
         );
-
-        res.status(500).json({
-            message: "Failed to fetch dashboard summary",
-            error: error.message
-        });
-    }
-};
-
-export const getDashboardStatus = async (req, res) => {
-    try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const thirtyDaysFromNow = new Date(today);
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-        const expired = await PurchaseOrder.countDocuments({
-            supportExpiryDate: { $lt: today }
-        });
-
-        const expiringSoon = await PurchaseOrder.countDocuments({
-            supportExpiryDate: {
-                $gte: today,
-                $lte: thirtyDaysFromNow
-            }
-        });
-
-        const active = await PurchaseOrder.countDocuments({
-            supportExpiryDate: { $gt: thirtyDaysFromNow }
-        });
-
-        const noExpiryDate = await PurchaseOrder.countDocuments({
-            $or: [
-                { supportExpiryDate: { $exists: false } },
-                { supportExpiryDate: null }
-            ]
-        });
-
-        res.status(200).json({
-            message: "Dashboard status fetched successfully",
-            status: {
-                active,
-                expiringSoon,
-                expired,
-                noExpiryDate
-            }
-        });
-
-    } catch (error) {
-        console.error("Dashboard status error:", error);
 
         res.status(500).json({
             message: "Failed to fetch dashboard status",
@@ -151,137 +188,288 @@ export const getDashboardStatus = async (req, res) => {
         });
     }
 };
+
+
+// =====================================================
+// COMPLETE DASHBOARD DATA
+// Customer
+//      ↓
+// Purchase Order
+//      ↓
+// Network Units
+// =====================================================
+
 export const getDashboardData = async (req, res) => {
+
     try {
-        const customers = await Customer.find()
-            .sort({ name: 1 })
-            .lean();
 
-        const purchaseOrders = await PurchaseOrder.find()
-            .sort({ createdAt: -1 })
-            .lean();
+        const customers =
+            await Customer.find()
+                .sort({ name: 1 })
+                .lean();
 
-        const networkUnits = await NetworkUnit.find()
-            .sort({ createdAt: 1 })
-            .lean();
+
+        const purchaseOrders =
+            await PurchaseOrder.find()
+                .sort({ createdAt: -1 })
+                .lean();
+
+
+        const networkUnits =
+            await NetworkUnit.find()
+                .sort({ createdAt: 1 })
+                .lean();
+
+
+        // -------------------------------------------------
+        // DATE CALCULATIONS
+        // -------------------------------------------------
 
         const today = new Date();
+
         today.setHours(0, 0, 0, 0);
 
-        const thirtyDaysFromNow = new Date(today);
+
+        const thirtyDaysFromNow =
+            new Date(today);
+
         thirtyDaysFromNow.setDate(
             thirtyDaysFromNow.getDate() + 30
         );
 
+
+        // -------------------------------------------------
+        // CUSTOMER MAP
+        // -------------------------------------------------
+
         const customerMap = {};
 
+
         customers.forEach((customer) => {
-            customerMap[customer._id.toString()] = {
+
+            customerMap[
+                customer._id.toString()
+            ] = {
+
                 _id: customer._id,
+
                 name: customer.name,
+
                 purchaseOrders: []
+
             };
+
         });
+
+
+        // -------------------------------------------------
+        // PURCHASE ORDER MAP
+        // -------------------------------------------------
 
         const purchaseOrderMap = {};
 
+
         purchaseOrders.forEach((po) => {
 
-            // Skip invalid purchase orders
-            // that don't have a customer
             if (!po.customerId) {
+
                 console.log(
-                    `Skipping PO ${po.poNumber || "unknown"} because customerId is missing`
+                    `Skipping PO ${
+                        po.poNumber || "unknown"
+                    } because customerId is missing`
                 );
+
                 return;
             }
 
+
+            // ---------------------------------------------
+            // DETERMINE STATUS
+            // ---------------------------------------------
+
             let status = "No Expiry Date";
 
+
             if (po.supportExpiryDate) {
-                const expiryDate = new Date(
-                    po.supportExpiryDate
+
+                const expiryDate =
+                    new Date(
+                        po.supportExpiryDate
+                    );
+
+                expiryDate.setHours(
+                    0,
+                    0,
+                    0,
+                    0
                 );
 
-                expiryDate.setHours(0, 0, 0, 0);
 
                 if (expiryDate < today) {
+
                     status = "Expired";
-                } else if (expiryDate <= thirtyDaysFromNow) {
-                    status = "Expiring ≤ 30 Days";
+
+                } else if (
+                    expiryDate <=
+                    thirtyDaysFromNow
+                ) {
+
+                    status =
+                        "Expiring ≤ 30 Days";
+
                 } else {
+
                     status = "Active";
+
                 }
+
             }
 
+
+            // ---------------------------------------------
+            // CREATE PURCHASE ORDER OBJECT
+            // ---------------------------------------------
+
             const purchaseOrder = {
+
                 _id: po._id,
-                poNumber: po.poNumber,
-                invoiceNumber: po.invoiceNumber || "",
+
+                poNumber:
+                    po.poNumber || "",
+
+                invoiceNumber:
+                    po.invoiceNumber || "",
+
                 supportExpiryDate:
                     po.supportExpiryDate || null,
-                team: po.team || "Unassigned",
-                notes: po.notes || "",
-                renewed: po.renewed || false,
+
+                team:
+                    po.team || "Unassigned",
+
+                notes:
+                    po.notes || "",
+
+                renewed:
+                    po.renewed || false,
+
                 status,
+
                 units: []
+
             };
 
-            purchaseOrderMap[po._id.toString()] =
-                purchaseOrder;
+
+            purchaseOrderMap[
+                po._id.toString()
+            ] = purchaseOrder;
+
+
+            // ---------------------------------------------
+            // ADD PO TO CUSTOMER
+            // ---------------------------------------------
 
             const customerId =
                 po.customerId.toString();
 
-            if (customerMap[customerId]) {
-                customerMap[customerId].purchaseOrders.push(
+
+            if (
+                customerMap[customerId]
+            ) {
+
+                customerMap[
+                    customerId
+                ].purchaseOrders.push(
                     purchaseOrder
                 );
+
             }
+
         });
+
+
+        // -------------------------------------------------
+        // ADD NETWORK UNITS TO THEIR PO
+        // -------------------------------------------------
 
         networkUnits.forEach((unit) => {
 
-            // Skip units without a purchase order
             if (!unit.purchaseOrderId) {
+
                 console.log(
-                    `Skipping unit ${unit.unitCode || "unknown"} because purchaseOrderId is missing`
+                    `Skipping unit ${
+                        unit.unitCode || "unknown"
+                    } because purchaseOrderId is missing`
                 );
+
                 return;
+
             }
+
 
             const purchaseOrder =
                 purchaseOrderMap[
                     unit.purchaseOrderId.toString()
                 ];
 
+
             if (purchaseOrder) {
+
                 purchaseOrder.units.push({
+
                     _id: unit._id,
-                    unitCode: unit.unitCode,
-                    hostname: unit.hostname || "",
+
+                    unitCode:
+                        unit.unitCode || "",
+
+                    hostname:
+                        unit.hostname || "",
+
                     radioConfiguration:
                         unit.radioConfiguration || ""
+
                 });
+
             }
+
         });
 
-        const data = Object.values(customerMap);
+
+        // -------------------------------------------------
+        // FINAL DATA
+        // -------------------------------------------------
+
+        const data =
+            Object.values(customerMap);
+
 
         res.status(200).json({
-            message: "Dashboard data fetched successfully",
+
+            message:
+                "Dashboard data fetched successfully",
+
             data
+
         });
 
+
     } catch (error) {
+
         console.error(
             "Dashboard data error:",
             error
         );
 
+
         res.status(500).json({
-            message: "Failed to fetch dashboard data",
-            error: error.message
+
+            message:
+                "Failed to fetch dashboard data",
+
+            error:
+                error.message
+
         });
+
     }
+
 };
