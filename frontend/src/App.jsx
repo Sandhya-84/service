@@ -10,13 +10,19 @@ import {
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Dashboard from "./pages/dashboard/Dashboard";
+import ImportExcel from "./pages/imports/ImportExcel";
+import ImportHistory from "./pages/imports/ImportHistory";
+import AddCustomer from "./pages/customer/AddCustomer";
+import AddPurchaseOrder from "./pages/purchaseOrder/AddPurchaseOrder";
 
+import AddNetworkUnit from "./pages/networkUnit/AddNetworkUnit";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 
 const App = () => {
 
     return (
+
         <BrowserRouter>
 
             <Routes>
@@ -31,15 +37,18 @@ const App = () => {
                     }
                 />
 
+
                 <Route
                     path="/login"
                     element={<Login />}
                 />
 
+
                 <Route
                     path="/register"
                     element={<Register />}
                 />
+
 
                 <Route
                     path="/dashboard"
@@ -50,9 +59,57 @@ const App = () => {
                     }
                 />
 
+
+                <Route
+                    path="/import-excel"
+                    element={
+                        <ProtectedRoute>
+                            <ImportExcel />
+                        </ProtectedRoute>
+                    }
+                />
+
+
+                <Route
+                    path="/import-history"
+                    element={
+                        <ProtectedRoute>
+                            <ImportHistory />
+                        </ProtectedRoute>
+                    }
+                />
+
+
+                <Route
+                    path="/add-customer"
+                    element={
+                        <ProtectedRoute>
+                            <AddCustomer />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+    path="/add-purchase-order"
+    element={
+        <ProtectedRoute>
+            <AddPurchaseOrder />
+        </ProtectedRoute>
+    }
+/>
+
+<Route
+    path="/add-network-unit"
+    element={
+        <ProtectedRoute>
+            <AddNetworkUnit />
+        </ProtectedRoute>
+    }
+/>
+
             </Routes>
 
         </BrowserRouter>
+
     );
 };
 

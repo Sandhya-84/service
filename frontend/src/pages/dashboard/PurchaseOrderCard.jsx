@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
     updatePurchaseOrder,
@@ -8,32 +9,37 @@ import {
 
 import NetworkUnitsTable from "./NetworkUnitsTable";
 
-
 const PurchaseOrderCard = ({
-    po,
+    purchaseOrder,
     darkMode,
     onPurchaseOrderUpdated
 }) => {
 
-    const [expanded, setExpanded] =
+    const navigate = useNavigate();
+
+    // =========================
+    // STATES
+    // =========================
+
+    const [team, setTeam] = useState(
+        purchaseOrder?.team || "Unassigned"
+    );
+
+    const [notes, setNotes] = useState(
+        purchaseOrder?.notes || ""
+    );
+
+    const [renewed, setRenewed] = useState(
+        purchaseOrder?.renewed || false
+    );
+
+    const [unitsExpanded, setUnitsExpanded] =
         useState(false);
 
-    const [team, setTeam] =
-        useState(po.team || "");
-
-    const [notes, setNotes] =
-        useState(po.notes || "");
-
-    const [renewed, setRenewed] =
-        useState(po.renewed || false);
-
-    const [saving, setSaving] =
+    const [renewalOpen, setRenewalOpen] =
         useState(false);
 
-    const [message, setMessage] =
-        useState("");
-
-    const [showRenewalModal, setShowRenewalModal] =
+    const [historyExpanded, setHistoryExpanded] =
         useState(false);
 
     const [newExpiryDate, setNewExpiryDate] =
@@ -42,21 +48,74 @@ const PurchaseOrderCard = ({
     const [renewalNotes, setRenewalNotes] =
         useState("");
 
-    const [renewing, setRenewing] =
-        useState(false);
-
-    const [renewalMessage, setRenewalMessage] =
-        useState("");
-
     const [renewalHistory, setRenewalHistory] =
         useState([]);
+
+    const [loading, setLoading] =
+        useState(false);
 
     const [historyLoading, setHistoryLoading] =
         useState(false);
 
-    const [showHistory, setShowHistory] =
-        useState(false);
+    const [error, setError] =
+        useState("");
 
+    const [success, setSuccess] =
+        useState("");
+
+
+    // =========================
+    // UPDATE LOCAL STATE
+    // =========================
+
+    useEffect(() => {
+
+        if (!purchaseOrder) {
+            return;
+        }
+
+        setTeam(
+            purchaseOrder.team || "Unassigned"
+        );
+
+        setNotes(
+            purchaseOrder.notes || ""
+        );
+
+        setRenewed(
+            purchaseOrder.renewed || false
+        );
+
+    }, [purchaseOrder]);
+
+
+    // =========================
+    // SAFETY
+    // =========================
+
+    if (!purchaseOrder) {
+        return null;
+    }
+
+
+    // =========================
+    // DATA
+    // =========================
+
+    const {
+        _id,
+        poNumber,
+        invoiceNumber,
+        supportExpiryDate,
+        nextRenewalDate,
+        status,
+        units = []
+    } = purchaseOrder;
+
+
+    // =========================
+    // FORMAT DATE
+    // =========================
 
     const formatDate = (date) => {
 
@@ -64,7 +123,18 @@ const PurchaseOrderCard = ({
             return "—";
         }
 
-        return new Date(date).toLocaleDateString(
+        const parsedDate =
+            new Date(date);
+
+        if (
+            Number.isNaN(
+                parsedDate.getTime()
+            )
+        ) {
+            return "—";
+        }
+
+        return parsedDate.toLocaleDateString(
             "en-IN",
             {
                 day: "2-digit",
@@ -75,85 +145,110 @@ const PurchaseOrderCard = ({
     };
 
 
-    const getDaysText = (date) => {
+    // =========================
+    // DATE INPUT FORMAT
+    // =========================
+
+    const formatDateForInput = (date) => {
 
         if (!date) {
             return "";
         }
 
-        const today = new Date();
+        const parsedDate =
+            new Date(date);
 
-        today.setHours(
-            0,
-            0,
-            0,
-            0
-        );
-
-        const expiry = new Date(date);
-
-        expiry.setHours(
-            0,
-            0,
-            0,
-            0
-        );
-
-        const difference =
-            Math.ceil(
-                (
-                    expiry.getTime() -
-                    today.getTime()
-                ) /
-                (1000 * 60 * 60 * 24)
-            );
-
-
-        if (difference < 0) {
-            return `${Math.abs(difference)}d ago`;
+        if (
+            Number.isNaN(
+                parsedDate.getTime()
+            )
+        ) {
+            return "";
         }
 
-        if (difference === 0) {
-            return "Today";
-        }
+        const year =
+            parsedDate.getFullYear();
 
-        return `in ${difference}d`;
+        const month =
+            String(
+                parsedDate.getMonth() + 1
+            ).padStart(2, "0");
+
+        const day =
+            String(
+                parsedDate.getDate()
+            ).padStart(2, "0");
+
+        return `${year}-${month}-${day}`;
     };
 
 
-    const handleSave = async () => {
+    // =========================
+    // STATUS
+    // =========================
+
+    const getStatusClass = () => {
+
+        if (status === "Expired") {
+
+            return darkMode
+                ? "bg-red-950 text-red-300"
+                : "bg-red-100 text-red-600";
+        }
+
+        if (status === "Expiring Soon") {
+
+            return darkMode
+                ? "bg-amber-950 text-amber-300"
+                : "bg-amber-100 text-amber-700";
+        }
+
+        if (status === "Active") {
+
+            return darkMode
+                ? "bg-green-950 text-green-300"
+                : "bg-green-100 text-green-700";
+        }
+
+        return darkMode
+            ? "bg-slate-700 text-slate-300"
+            : "bg-slate-100 text-slate-600";
+    };
+
+
+    // =========================
+    // UPDATE PO
+    // =========================
+
+    const savePurchaseOrder = async (
+        changes
+    ) => {
 
         try {
 
-            setSaving(true);
-            setMessage("");
+            setError("");
+            setSuccess("");
 
             const response =
                 await updatePurchaseOrder(
-                    po._id,
-                    {
-                        team,
-                        notes,
-                        renewed
-                    }
+                    _id,
+                    changes
                 );
 
+            const updatedPO =
+                response.purchaseOrder ||
+                response.po ||
+                response;
 
-            setMessage(
-                "Saved successfully."
-            );
-
-
-            if (
-                onPurchaseOrderUpdated &&
-                response.purchaseOrder
-            ) {
+            if (onPurchaseOrderUpdated) {
 
                 onPurchaseOrderUpdated(
-                    response.purchaseOrder
+                    _id,
+                    updatedPO
                 );
-
             }
+
+            return updatedPO;
 
         } catch (error) {
 
@@ -162,94 +257,268 @@ const PurchaseOrderCard = ({
                 error
             );
 
-            setMessage(
+            setError(
                 error.response?.data?.message ||
-                "Failed to save changes."
+                "Failed to update purchase order"
             );
 
-        } finally {
-
-            setSaving(false);
-
+            return null;
         }
-
     };
 
 
-    const handleOpenRenewal = () => {
+    // =========================
+    // TEAM
+    // =========================
+
+    const handleTeamBlur = async () => {
+
+        const cleanedTeam =
+            team.trim() || "Unassigned";
+
+        setTeam(cleanedTeam);
+
+        await savePurchaseOrder({
+            team: cleanedTeam
+        });
+    };
+
+
+    // =========================
+    // NOTES
+    // =========================
+
+    const handleNotesBlur = async () => {
+
+        await savePurchaseOrder({
+            notes: notes.trim()
+        });
+    };
+
+
+    // =========================
+    // RENEWED
+    // =========================
+
+    const handleRenewedChange = async (
+        event
+    ) => {
+
+        const checked =
+            event.target.checked;
+
+        setRenewed(checked);
+
+        await savePurchaseOrder({
+            renewed: checked
+        });
+    };
+
+
+    // =========================
+    // LOAD HISTORY
+    // =========================
+
+    const loadRenewalHistory =
+        async () => {
+
+            try {
+
+                setHistoryLoading(true);
+                setError("");
+
+                const response =
+                    await getRenewalHistory(
+                        _id
+                    );
+
+                setRenewalHistory(
+                    response.renewalHistory ||
+                    response.history ||
+                    []
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "Get renewal history error:",
+                    error
+                );
+
+                setError(
+                    error.response?.data?.message ||
+                    "Failed to load renewal history"
+                );
+
+            } finally {
+
+                setHistoryLoading(false);
+            }
+        };
+
+
+    // =========================
+    // OPEN RENEWAL
+    // =========================
+
+    const handleOpenRenewal = async () => {
+
+        setError("");
+        setSuccess("");
+
+        setRenewalOpen(true);
 
         setNewExpiryDate("");
         setRenewalNotes("");
-        setRenewalMessage("");
-        setShowRenewalModal(true);
 
+        await loadRenewalHistory();
     };
 
+
+    // =========================
+    // CLOSE RENEWAL
+    // =========================
 
     const handleCloseRenewal = () => {
 
-        if (renewing) {
-            return;
-        }
+        setRenewalOpen(false);
 
-        setShowRenewalModal(false);
+        setHistoryExpanded(false);
 
+        setNewExpiryDate("");
+
+        setRenewalNotes("");
+
+        setError("");
+
+        setSuccess("");
     };
 
 
+    // =========================
+    // HISTORY OPEN/CLOSE
+    // =========================
+
+    const handleToggleHistory = async () => {
+
+        const nextState =
+            !historyExpanded;
+
+        setHistoryExpanded(nextState);
+
+        if (nextState) {
+
+            await loadRenewalHistory();
+        }
+    };
+
+
+    // =========================
+    // RENEW SUPPORT
+    // =========================
+
     const handleRenew = async () => {
+
+        setError("");
+        setSuccess("");
 
         if (!newExpiryDate) {
 
-            setRenewalMessage(
-                "Please select a new expiry date."
+            setError(
+                "Please select a new expiry date"
             );
 
             return;
-
         }
 
+        if (!supportExpiryDate) {
+
+            setError(
+                "This purchase order does not have an existing expiry date."
+            );
+
+            return;
+        }
+
+        const oldDate =
+            new Date(
+                supportExpiryDate
+            );
+
+        const selectedDate =
+            new Date(
+                `${newExpiryDate}T00:00:00`
+            );
+
+        if (
+            Number.isNaN(
+                selectedDate.getTime()
+            )
+        ) {
+
+            setError(
+                "Invalid expiry date"
+            );
+
+            return;
+        }
+
+        if (
+            selectedDate <= oldDate
+        ) {
+
+            setError(
+                "New expiry date must be later than the current expiry date"
+            );
+
+            return;
+        }
 
         try {
 
-            setRenewing(true);
-            setRenewalMessage("");
-
+            setLoading(true);
 
             const response =
                 await createRenewal({
-                    purchaseOrderId: po._id,
-                    newExpiryDate,
-                    notes: renewalNotes
+
+                    purchaseOrderId:
+                        _id,
+
+                    newExpiryDate:
+                        selectedDate.toISOString(),
+
+                    notes:
+                        renewalNotes.trim()
                 });
 
 
-            setRenewalMessage(
-                "Renewal recorded successfully."
-            );
-
-
-            setRenewed(true);
-
+            const updatedPO =
+                response.purchaseOrder;
 
             if (
-                onPurchaseOrderUpdated &&
-                response.purchaseOrder
+                updatedPO &&
+                onPurchaseOrderUpdated
             ) {
 
                 onPurchaseOrderUpdated(
-                    response.purchaseOrder
+                    _id,
+                    updatedPO
                 );
-
             }
 
+            setNewExpiryDate("");
 
-            setTimeout(() => {
+            setRenewalNotes("");
 
-                setShowRenewalModal(false);
+            setRenewed(true);
 
-            }, 800);
+            await loadRenewalHistory();
 
+            setHistoryExpanded(true);
+
+            setSuccess(
+                "Support renewed successfully"
+            );
 
         } catch (error) {
 
@@ -258,124 +527,97 @@ const PurchaseOrderCard = ({
                 error
             );
 
-            setRenewalMessage(
+            setError(
                 error.response?.data?.message ||
-                "Failed to record renewal."
+                "Failed to renew support"
             );
 
         } finally {
 
-            setRenewing(false);
-
+            setLoading(false);
         }
-
     };
 
 
-    const handleLoadHistory = async () => {
+    // =========================
+    // ADD UNIT
+    // =========================
 
-        try {
+    const handleAddUnit = () => {
 
-            setHistoryLoading(true);
-
-            const response =
-                await getRenewalHistory(
-                    po._id
-                );
-
-            setRenewalHistory(
-                response.history || []
-            );
-
-            setShowHistory(true);
-
-        } catch (error) {
-
-            console.error(
-                "Renewal history error:",
-                error
-            );
-
-        } finally {
-
-            setHistoryLoading(false);
-
-        }
-
+        navigate(
+            `/add-network-unit?purchaseOrderId=${_id}`
+        );
     };
 
 
-    const statusClass =
-        po.status === "Active"
-            ? "bg-green-100 text-green-700"
-            : po.status ===
-              "Expiring ≤ 30 Days"
-            ? "bg-amber-100 text-amber-700"
-            : po.status === "Expired"
-            ? "bg-red-100 text-red-700"
-            : "bg-slate-100 text-slate-600";
+    // =========================
+    // TEXT COLORS
+    // =========================
 
+    const primaryText =
+        darkMode
+            ? "text-white"
+            : "text-slate-900";
 
-    const statusDot =
-        po.status === "Active"
-            ? "bg-green-500"
-            : po.status ===
-              "Expiring ≤ 30 Days"
-            ? "bg-amber-500"
-            : po.status === "Expired"
-            ? "bg-red-500"
-            : "bg-slate-400";
+    const secondaryText =
+        darkMode
+            ? "text-slate-400"
+            : "text-slate-600";
 
 
     return (
+
         <>
+
+            {/* ========================================= */}
             {/* PO ROW */}
+            {/* ========================================= */}
 
             <tr
                 className={
                     darkMode
-                        ? "border-t border-slate-800"
-                        : "border-t border-slate-200"
+                        ? "border-b border-slate-700"
+                        : "border-b border-slate-200"
                 }
             >
 
                 {/* PO NUMBER */}
 
-                <td className="px-3 py-2">
-
-                    <span className="data-text text-sm">
-                        {po.poNumber || "—"}
-                    </span>
-
+                <td
+                    className={
+                        `px-3 py-3 text-sm font-semibold ${primaryText}`
+                    }
+                >
+                    {poNumber || "—"}
                 </td>
 
 
                 {/* UNITS */}
 
-                <td className="px-3 py-2">
+                <td
+                    className="px-3 py-3"
+                >
 
                     <button
                         type="button"
                         onClick={() =>
-                            setExpanded(!expanded)
+                            setUnitsExpanded(
+                                !unitsExpanded
+                            )
                         }
                         className={
                             darkMode
-                                ? "rounded-full bg-slate-700 px-3 py-1 text-xs font-medium text-slate-200 hover:bg-slate-600"
-                                : "rounded-full bg-[#edf3f4] px-3 py-1 text-xs font-medium text-slate-700 hover:bg-[#e2ebec]"
+                                ? "rounded-md bg-slate-800 px-2 py-1 text-xs font-semibold text-blue-300"
+                                : "rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
                         }
                     >
 
-                        {po.units?.length || 0}
+                        {units.length}
 
-                        {po.units?.length === 1
+                        {units.length === 1
                             ? " unit"
                             : " units"}
-
-                        {" "}
-                        {expanded
-                            ? "⌃"
-                            : "⌄"}
 
                     </button>
 
@@ -384,54 +626,41 @@ const PurchaseOrderCard = ({
 
                 {/* INVOICE */}
 
-                <td className="px-3 py-2">
-
-                    <span className="data-text text-sm">
-                        {po.invoiceNumber || "—"}
-                    </span>
-
+                <td
+                    className={
+                        `px-3 py-3 text-sm ${secondaryText}`
+                    }
+                >
+                    {invoiceNumber || "—"}
                 </td>
 
 
-                {/* SUPPORT EXPIRY */}
+                {/* EXPIRY */}
 
-                <td className="px-3 py-2">
-
-                    <div className="text-sm">
-
-                        <div className="data-text">
-                            {formatDate(
-                                po.supportExpiryDate
-                            )}
-                        </div>
-
-                        {po.supportExpiryDate && (
-                            <div className="text-[11px] text-slate-500">
-                                {getDaysText(
-                                    po.supportExpiryDate
-                                )}
-                            </div>
-                        )}
-
-                    </div>
-
+                <td
+                    className={
+                        `px-3 py-3 text-sm ${secondaryText}`
+                    }
+                >
+                    {formatDate(
+                        supportExpiryDate
+                    )}
                 </td>
 
 
                 {/* STATUS */}
 
-                <td className="px-3 py-2">
+                <td
+                    className="px-3 py-3"
+                >
 
                     <span
-                        className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${statusClass}`}
+                        className={
+                            `inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass()}`
+                        }
                     >
-
-                        <span
-                            className={`h-2 w-2 rounded-full ${statusDot}`}
-                        />
-
-                        {po.status}
-
+                        {status ||
+                            "No Expiry Date"}
                     </span>
 
                 </td>
@@ -439,22 +668,25 @@ const PurchaseOrderCard = ({
 
                 {/* TEAM */}
 
-                <td className="px-3 py-2">
+                <td
+                    className="px-3 py-3"
+                >
 
                     <input
                         type="text"
                         value={team}
-                        onChange={(e) =>
+                        onChange={(event) =>
                             setTeam(
-                                e.target.value
+                                event.target.value
                             )
                         }
-                        onBlur={handleSave}
-                        placeholder="Unassigned"
+                        onBlur={
+                            handleTeamBlur
+                        }
                         className={
                             darkMode
-                                ? "w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500"
-                                : "w-full rounded-md border border-slate-200 bg-[#edf3f4] px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                ? "w-32 rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-white"
+                                : "w-32 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
                         }
                     />
 
@@ -463,24 +695,17 @@ const PurchaseOrderCard = ({
 
                 {/* RENEWED */}
 
-                <td className="px-3 py-2 text-center">
+                <td
+                    className="px-3 py-3 text-center"
+                >
 
                     <input
                         type="checkbox"
                         checked={renewed}
-                        onChange={(e) => {
-
-                            setRenewed(
-                                e.target.checked
-                            );
-
-                            setTimeout(
-                                handleSave,
-                                0
-                            );
-
-                        }}
-                        className="h-4 w-4"
+                        onChange={
+                            handleRenewedChange
+                        }
+                        className="h-4 w-4 cursor-pointer"
                     />
 
                 </td>
@@ -488,22 +713,26 @@ const PurchaseOrderCard = ({
 
                 {/* NOTES */}
 
-                <td className="px-3 py-2">
+                <td
+                    className="px-3 py-3"
+                >
 
                     <input
                         type="text"
                         value={notes}
-                        onChange={(e) =>
+                        onChange={(event) =>
                             setNotes(
-                                e.target.value
+                                event.target.value
                             )
                         }
-                        onBlur={handleSave}
-                        placeholder="Add note..."
+                        onBlur={
+                            handleNotesBlur
+                        }
+                        placeholder="Add notes"
                         className={
                             darkMode
-                                ? "w-full rounded-md border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500"
-                                : "w-full rounded-md border border-slate-200 bg-[#edf3f4] px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500"
+                                ? "w-40 rounded-md border border-slate-600 bg-slate-800 px-2 py-1.5 text-xs text-white"
+                                : "w-40 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-800"
                         }
                     />
 
@@ -512,175 +741,138 @@ const PurchaseOrderCard = ({
             </tr>
 
 
-            {/* EXPANDED UNITS */}
+            {/* ========================================= */}
+            {/* ACTION ROW */}
+            {/* ========================================= */}
 
-            {expanded && (
+            <tr
+                className={
+                    darkMode
+                        ? "border-b border-slate-700 bg-slate-900"
+                        : "border-b border-slate-100 bg-slate-50"
+                }
+            >
 
-                <tr>
+                <td
+                    colSpan="8"
+                    className="px-3 py-2"
+                >
 
-                    <td
-                        colSpan="8"
-                        className={
-                            darkMode
-                                ? "bg-slate-950 px-6 py-4"
-                                : "bg-slate-50 px-6 py-4"
-                        }
-                    >
+                    <div className="flex flex-wrap items-center gap-2">
 
-                        <NetworkUnitsTable
-                            units={po.units}
-                            darkMode={darkMode}
-                        />
+                        {/* ADD UNIT */}
+
+                        <button
+                            type="button"
+                            onClick={
+                                handleAddUnit
+                            }
+                            className={
+                                darkMode
+                                    ? "rounded-md bg-blue-950 px-3 py-1.5 text-xs font-semibold text-blue-300"
+                                    : "rounded-md bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                            }
+                        >
+                            + Add Unit
+                        </button>
 
 
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        {/* RENEW / CLOSE */}
+
+                        {!renewalOpen ? (
 
                             <button
                                 type="button"
                                 onClick={
                                     handleOpenRenewal
                                 }
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                                className={
+                                    darkMode
+                                        ? "rounded-md bg-green-950 px-3 py-1.5 text-xs font-semibold text-green-300"
+                                        : "rounded-md bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700"
+                                }
                             >
                                 Renew Support
                             </button>
 
+                        ) : (
 
                             <button
                                 type="button"
                                 onClick={
-                                    handleLoadHistory
+                                    handleCloseRenewal
                                 }
-                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold hover:bg-slate-100"
-                            >
-                                {historyLoading
-                                    ? "Loading..."
-                                    : "Renewal History"}
-                            </button>
-
-                        </div>
-
-
-                        {message && (
-                            <p className="mt-2 text-sm text-slate-500">
-                                {message}
-                            </p>
-                        )}
-
-
-                        {/* RENEWAL HISTORY */}
-
-                        {showHistory && (
-
-                            <div
                                 className={
                                     darkMode
-                                        ? "mt-4 rounded-xl bg-slate-900 p-4"
-                                        : "mt-4 rounded-xl bg-white p-4"
+                                        ? "rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300"
+                                        : "rounded-md bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                                }
+                            >
+                                Close Renewal
+                            </button>
+
+                        )}
+
+
+                        {/* NEXT RENEWAL */}
+
+                        {nextRenewalDate && (
+
+                            <span
+                                className={
+                                    `text-xs ${secondaryText}`
                                 }
                             >
 
-                                <div className="mb-3 flex items-center justify-between">
+                                Next renewal:
 
-                                    <h4 className="font-semibold">
-                                        Renewal History
-                                    </h4>
+                                {" "}
 
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setShowHistory(
-                                                false
-                                            )
-                                        }
-                                        className="text-sm text-slate-500"
-                                    >
-                                        Hide
-                                    </button>
+                                <strong>
+                                    {formatDate(
+                                        nextRenewalDate
+                                    )}
+                                </strong>
 
-                                </div>
-
-
-                                {renewalHistory.length === 0 ? (
-
-                                    <p className="text-sm text-slate-500">
-                                        No renewal history available.
-                                    </p>
-
-                                ) : (
-
-                                    <div className="space-y-3">
-
-                                        {renewalHistory.map(
-                                            (history) => (
-
-                                                <div
-                                                    key={
-                                                        history._id
-                                                    }
-                                                    className="rounded-lg border border-slate-200 p-3"
-                                                >
-
-                                                    <div className="grid gap-3 md:grid-cols-3">
-
-                                                        <div>
-
-                                                            <p className="text-xs text-slate-500">
-                                                                Previous Expiry
-                                                            </p>
-
-                                                            <p className="font-semibold">
-                                                                {formatDate(
-                                                                    history.oldExpiryDate
-                                                                )}
-                                                            </p>
-
-                                                        </div>
-
-
-                                                        <div>
-
-                                                            <p className="text-xs text-slate-500">
-                                                                New Expiry
-                                                            </p>
-
-                                                            <p className="font-semibold">
-                                                                {formatDate(
-                                                                    history.newExpiryDate
-                                                                )}
-                                                            </p>
-
-                                                        </div>
-
-
-                                                        <div>
-
-                                                            <p className="text-xs text-slate-500">
-                                                                Renewed On
-                                                            </p>
-
-                                                            <p className="font-semibold">
-                                                                {formatDate(
-                                                                    history.createdAt
-                                                                )}
-                                                            </p>
-
-                                                        </div>
-
-                                                    </div>
-
-                                                </div>
-
-                                            )
-                                        )}
-
-                                    </div>
-
-                                )}
-
-                            </div>
+                            </span>
 
                         )}
+
+                    </div>
+
+                </td>
+
+            </tr>
+
+
+            {/* ========================================= */}
+            {/* NETWORK UNITS */}
+            {/* ========================================= */}
+
+            {unitsExpanded && (
+
+                <tr
+                    className={
+                        darkMode
+                            ? "border-b border-slate-700 bg-slate-950"
+                            : "border-b border-slate-200 bg-white"
+                    }
+                >
+
+                    <td
+                        colSpan="8"
+                        className="p-0"
+                    >
+
+                        <div className="p-3">
+
+                            <NetworkUnitsTable
+                                purchaseOrderId={_id}
+                                units={units}
+                                darkMode={darkMode}
+                            />
+
+                        </div>
 
                     </td>
 
@@ -689,138 +881,397 @@ const PurchaseOrderCard = ({
             )}
 
 
-            {/* RENEWAL MODAL */}
+            {/* ========================================= */}
+            {/* RENEW SUPPORT PANEL */}
+            {/* ========================================= */}
 
-            {showRenewalModal && (
+            {renewalOpen && (
 
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <tr
+                    className={
+                        darkMode
+                            ? "border-b border-slate-700 bg-slate-950"
+                            : "border-b border-slate-200 bg-slate-50"
+                    }
+                >
 
-                    <div
-                        className={
-                            darkMode
-                                ? "w-full max-w-lg rounded-2xl bg-slate-900 p-6 text-white"
-                                : "w-full max-w-lg rounded-2xl bg-white p-6 text-slate-900"
-                        }
+                    <td
+                        colSpan="8"
+                        className="p-4"
                     >
 
-                        <div className="flex items-center justify-between">
+                        <div
+                            className={
+                                darkMode
+                                    ? "rounded-lg border border-slate-700 bg-slate-900 p-4"
+                                    : "rounded-lg border border-slate-200 bg-white p-4"
+                            }
+                        >
 
-                            <h3 className="font-sora text-lg font-semibold">
-                                Renew Support
-                            </h3>
+                            {/* TITLE */}
 
-                            <button
-                                type="button"
-                                onClick={
-                                    handleCloseRenewal
-                                }
-                                className="text-xl text-slate-500"
+                            <div className="mb-4">
+
+                                <h3
+                                    className={
+                                        `text-sm font-semibold ${primaryText}`
+                                    }
+                                >
+                                    Renew Support
+                                </h3>
+
+                                <p
+                                    className={
+                                        `mt-1 text-xs ${secondaryText}`
+                                    }
+                                >
+                                    Current expiry:
+
+                                    {" "}
+
+                                    <strong>
+                                        {formatDate(
+                                            supportExpiryDate
+                                        )}
+                                    </strong>
+                                </p>
+
+                            </div>
+
+
+                            {/* FORM */}
+
+                            <div
+                                className="grid gap-3 md:grid-cols-3"
                             >
-                                ×
-                            </button>
 
-                        </div>
+                                <div>
+
+                                    <label
+                                        className={
+                                            `mb-1 block text-xs font-medium ${secondaryText}`
+                                        }
+                                    >
+                                        New Expiry Date
+                                    </label>
+
+                                    <input
+                                        type="date"
+                                        value={
+                                            newExpiryDate
+                                        }
+                                        min={
+                                            formatDateForInput(
+                                                supportExpiryDate
+                                            )
+                                        }
+                                        onChange={
+                                            (event) =>
+                                                setNewExpiryDate(
+                                                    event.target.value
+                                                )
+                                        }
+                                        className={
+                                            darkMode
+                                                ? "w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                                                : "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                        }
+                                    />
+
+                                </div>
 
 
-                        <div className="mt-5">
+                                <div
+                                    className="md:col-span-2"
+                                >
 
-                            <p className="text-sm text-slate-500">
-                                Current expiry date
-                            </p>
+                                    <label
+                                        className={
+                                            `mb-1 block text-xs font-medium ${secondaryText}`
+                                        }
+                                    >
+                                        Renewal Notes
+                                    </label>
 
-                            <p className="font-semibold">
-                                {formatDate(
-                                    po.supportExpiryDate
+                                    <input
+                                        type="text"
+                                        value={
+                                            renewalNotes
+                                        }
+                                        onChange={
+                                            (event) =>
+                                                setRenewalNotes(
+                                                    event.target.value
+                                                )
+                                        }
+                                        placeholder="Optional renewal notes"
+                                        className={
+                                            darkMode
+                                                ? "w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                                                : "w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                        }
+                                    />
+
+                                </div>
+
+                            </div>
+
+
+                            {/* CONFIRM */}
+
+                            <div className="mt-3">
+
+                                <button
+                                    type="button"
+                                    onClick={
+                                        handleRenew
+                                    }
+                                    disabled={
+                                        loading
+                                    }
+                                    className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+
+                                    {loading
+                                        ? "Renewing..."
+                                        : "Confirm Renewal"}
+
+                                </button>
+
+                            </div>
+
+
+                            {/* ERROR */}
+
+                            {error && (
+
+                                <div
+                                    className={
+                                        darkMode
+                                            ? "mt-3 rounded-md bg-red-950 px-3 py-2 text-xs text-red-300"
+                                            : "mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-600"
+                                    }
+                                >
+                                    {error}
+                                </div>
+
+                            )}
+
+
+                            {/* SUCCESS */}
+
+                            {success && (
+
+                                <div
+                                    className={
+                                        darkMode
+                                            ? "mt-3 rounded-md bg-green-950 px-3 py-2 text-xs text-green-300"
+                                            : "mt-3 rounded-md bg-green-50 px-3 py-2 text-xs text-green-700"
+                                    }
+                                >
+                                    {success}
+                                </div>
+
+                            )}
+
+
+                            {/* ===================================== */}
+                            {/* RENEWAL HISTORY */}
+                            {/* ===================================== */}
+
+                            <div className="mt-5">
+
+                                {/* HISTORY HEADER */}
+
+                                <button
+                                    type="button"
+                                    onClick={
+                                        handleToggleHistory
+                                    }
+                                    className={
+                                        darkMode
+                                            ? "flex w-full items-center justify-between rounded-md px-2 py-2 text-left hover:bg-slate-800"
+                                            : "flex w-full items-center justify-between rounded-md px-2 py-2 text-left hover:bg-slate-100"
+                                    }
+                                >
+
+                                    <div className="flex items-center gap-2">
+
+                                        {/* ARROW */}
+
+                                        <span
+                                            className={
+                                                darkMode
+                                                    ? "text-xs text-slate-400"
+                                                    : "text-xs text-slate-500"
+                                            }
+                                        >
+
+                                            {historyExpanded
+                                                ? "▼"
+                                                : "▶"}
+
+                                        </span>
+
+
+                                        <span
+                                            className={
+                                                darkMode
+                                                    ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
+                                                    : "text-xs font-semibold uppercase tracking-wide text-slate-600"
+                                            }
+                                        >
+                                            Renewal History
+                                        </span>
+
+                                    </div>
+
+
+                                    <span
+                                        className={
+                                            darkMode
+                                                ? "text-xs text-slate-500"
+                                                : "text-xs text-slate-400"
+                                        }
+                                    >
+
+                                        {renewalHistory.length}
+
+                                        {renewalHistory.length === 1
+                                            ? " record"
+                                            : " records"}
+
+                                    </span>
+
+                                </button>
+
+
+                                {/* HISTORY CONTENT */}
+
+                                {historyExpanded && (
+
+                                    <div
+                                        className="mt-2 space-y-2"
+                                    >
+
+                                        {historyLoading ? (
+
+                                            <p
+                                                className={
+                                                    `px-2 text-xs ${secondaryText}`
+                                                }
+                                            >
+                                                Loading history...
+                                            </p>
+
+                                        ) : renewalHistory.length === 0 ? (
+
+                                            <p
+                                                className={
+                                                    `px-2 text-xs ${secondaryText}`
+                                                }
+                                            >
+                                                No renewal history found.
+                                            </p>
+
+                                        ) : (
+
+                                            renewalHistory.map(
+                                                (history) => (
+
+                                                    <div
+                                                        key={
+                                                            history._id
+                                                        }
+                                                        className={
+                                                            darkMode
+                                                                ? "rounded-md border border-slate-700 bg-slate-800 p-3"
+                                                                : "rounded-md border border-slate-200 bg-slate-50 p-3"
+                                                        }
+                                                    >
+
+                                                        <div
+                                                            className={
+                                                                `grid gap-2 text-xs md:grid-cols-3 ${secondaryText}`
+                                                            }
+                                                        >
+
+                                                            <div>
+                                                                <span className="font-semibold">
+                                                                    Old:
+                                                                </span>
+
+                                                                {" "}
+
+                                                                {formatDate(
+                                                                    history.oldExpiryDate
+                                                                )}
+                                                            </div>
+
+
+                                                            <div>
+                                                                <span className="font-semibold">
+                                                                    New:
+                                                                </span>
+
+                                                                {" "}
+
+                                                                {formatDate(
+                                                                    history.newExpiryDate
+                                                                )}
+                                                            </div>
+
+
+                                                            <div>
+                                                                <span className="font-semibold">
+                                                                    Updated:
+                                                                </span>
+
+                                                                {" "}
+
+                                                                {formatDate(
+                                                                    history.createdAt
+                                                                )}
+                                                            </div>
+
+                                                        </div>
+
+
+                                                        {history.notes && (
+
+                                                            <p
+                                                                className={
+                                                                    `mt-2 text-xs ${secondaryText}`
+                                                                }
+                                                            >
+                                                                {history.notes}
+                                                            </p>
+
+                                                        )}
+
+                                                    </div>
+
+                                                )
+                                            )
+
+                                        )}
+
+                                    </div>
+
                                 )}
-                            </p>
+
+                            </div>
 
                         </div>
 
+                    </td>
 
-                        <div className="mt-4">
-
-                            <label className="mb-1 block text-sm font-semibold">
-                                New Expiry Date
-                            </label>
-
-                            <input
-                                type="date"
-                                value={newExpiryDate}
-                                onChange={(e) =>
-                                    setNewExpiryDate(
-                                        e.target.value
-                                    )
-                                }
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                            />
-
-                        </div>
-
-
-                        <div className="mt-4">
-
-                            <label className="mb-1 block text-sm font-semibold">
-                                Renewal Notes
-                            </label>
-
-                            <textarea
-                                value={renewalNotes}
-                                onChange={(e) =>
-                                    setRenewalNotes(
-                                        e.target.value
-                                    )
-                                }
-                                rows="3"
-                                placeholder="Optional renewal notes..."
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                            />
-
-                        </div>
-
-
-                        {renewalMessage && (
-
-                            <p className="mt-3 text-sm text-slate-500">
-                                {renewalMessage}
-                            </p>
-
-                        )}
-
-
-                        <div className="mt-5 flex justify-end gap-3">
-
-                            <button
-                                type="button"
-                                onClick={
-                                    handleCloseRenewal
-                                }
-                                disabled={renewing}
-                                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold"
-                            >
-                                Cancel
-                            </button>
-
-
-                            <button
-                                type="button"
-                                onClick={handleRenew}
-                                disabled={renewing}
-                                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                            >
-                                {renewing
-                                    ? "Renewing..."
-                                    : "Renew Support"}
-                            </button>
-
-                        </div>
-
-                    </div>
-
-                </div>
+                </tr>
 
             )}
 
         </>
+
     );
 };
 

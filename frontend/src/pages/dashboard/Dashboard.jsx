@@ -6,6 +6,8 @@ import StatusChart from "./StatusChart";
 import DashboardFilters from "./DashboardFilters";
 import CustomerCard from "./CustomerCard";
 
+import { useTheme } from "../../context/ThemeContext";
+
 import {
     getDashboardSummary,
     getDashboardData
@@ -15,11 +17,12 @@ import {
 const Dashboard = () => {
 
     // =========================
-    // DARK MODE
+    // GLOBAL DARK MODE
     // =========================
 
-    const [darkMode, setDarkMode] =
-        useState(false);
+    const {
+        darkMode
+    } = useTheme();
 
 
     // =========================
@@ -85,8 +88,10 @@ const Dashboard = () => {
     // SHOW / COLLAPSE ALL
     // =========================
 
-    const [allCustomersExpanded, setAllCustomersExpanded] =
-        useState(true);
+    const [
+        allCustomersExpanded,
+        setAllCustomersExpanded
+    ] = useState(true);
 
 
     // =========================
@@ -100,6 +105,7 @@ const Dashboard = () => {
             try {
 
                 setLoading(true);
+
                 setError("");
 
 
@@ -226,40 +232,58 @@ const Dashboard = () => {
                     customer.purchaseOrders?.filter(
                         (po) => {
 
+                            // =====================
                             // STATUS FILTER
+                            // =====================
 
                             if (
                                 statusFilter &&
                                 po.status !== statusFilter
                             ) {
+
                                 return false;
+
                             }
 
 
+                            // =====================
                             // TEAM FILTER
+                            // =====================
 
                             if (
                                 teamFilter &&
                                 po.team !== teamFilter
                             ) {
+
                                 return false;
+
                             }
 
 
+                            // =====================
                             // NO SEARCH
+                            // =====================
 
                             if (!search.trim()) {
+
                                 return true;
+
                             }
 
 
-                            // SEARCH
+                            // =====================
+                            // SEARCH TEXT
+                            // =====================
 
                             const searchText =
                                 search
                                     .toLowerCase()
                                     .trim();
 
+
+                            // =====================
+                            // PO SEARCH FIELDS
+                            // =====================
 
                             const poFields = [
                                 customer.name,
@@ -283,6 +307,10 @@ const Dashboard = () => {
                                             )
                                 );
 
+
+                            // =====================
+                            // UNIT SEARCH
+                            // =====================
 
                             const unitMatches =
                                 po.units?.some(
@@ -321,8 +349,10 @@ const Dashboard = () => {
 
                 return {
                     ...customer,
+
                     purchaseOrders:
                         filteredPurchaseOrders
+
                 };
 
             })
@@ -381,6 +411,7 @@ const Dashboard = () => {
 
                                     }
 
+
                                     return po;
 
                                 }
@@ -434,19 +465,22 @@ const Dashboard = () => {
             }
         >
 
+            {/* ========================= */}
             {/* HEADER */}
+            {/* ========================= */}
 
             <DashboardHeader
-                darkMode={darkMode}
-                setDarkMode={setDarkMode}
-                handleLogout={handleLogout}
+                onLogout={handleLogout}
             />
 
 
-            <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <main
+                className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8"
+            >
 
-
+                {/* ========================= */}
                 {/* ERROR */}
+                {/* ========================= */}
 
                 {error && (
 
@@ -463,7 +497,9 @@ const Dashboard = () => {
                 )}
 
 
+                {/* ========================= */}
                 {/* STAT CARDS */}
+                {/* ========================= */}
 
                 <StatCards
                     summary={summary}
@@ -471,7 +507,9 @@ const Dashboard = () => {
                 />
 
 
+                {/* ========================= */}
                 {/* STATUS CHART */}
+                {/* ========================= */}
 
                 <StatusChart
                     summary={summary}
@@ -479,27 +517,49 @@ const Dashboard = () => {
                 />
 
 
+                {/* ========================= */}
                 {/* FILTERS */}
+                {/* ========================= */}
 
                 <DashboardFilters
                     search={search}
                     setSearch={setSearch}
-                    statusFilter={statusFilter}
-                    setStatusFilter={setStatusFilter}
-                    teamFilter={teamFilter}
-                    setTeamFilter={setTeamFilter}
+
+                    statusFilter={
+                        statusFilter
+                    }
+
+                    setStatusFilter={
+                        setStatusFilter
+                    }
+
+                    teamFilter={
+                        teamFilter
+                    }
+
+                    setTeamFilter={
+                        setTeamFilter
+                    }
+
                     teams={teams}
+
                     darkMode={darkMode}
                 />
 
 
+                {/* ========================= */}
                 {/* SHOW / COLLAPSE */}
+                {/* ========================= */}
 
-                <div className="mb-4 flex flex-wrap justify-end gap-2">
+                <div
+                    className="mb-4 flex flex-wrap justify-end gap-2"
+                >
 
                     <button
                         type="button"
-                        onClick={handleShowAll}
+                        onClick={
+                            handleShowAll
+                        }
                         className={
                             darkMode
                                 ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
@@ -512,7 +572,9 @@ const Dashboard = () => {
 
                     <button
                         type="button"
-                        onClick={handleCollapseAll}
+                        onClick={
+                            handleCollapseAll
+                        }
                         className={
                             darkMode
                                 ? "rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
@@ -525,9 +587,13 @@ const Dashboard = () => {
                 </div>
 
 
+                {/* ========================= */}
                 {/* CUSTOMER LIST */}
+                {/* ========================= */}
 
-                <div className="space-y-4">
+                <div
+                    className="space-y-4"
+                >
 
                     {filteredDashboardData.length > 0 ? (
 
@@ -535,12 +601,22 @@ const Dashboard = () => {
                             (customer) => (
 
                                 <CustomerCard
-                                    key={customer._id}
-                                    customer={customer}
-                                    darkMode={darkMode}
+                                    key={
+                                        customer._id
+                                    }
+
+                                    customer={
+                                        customer
+                                    }
+
+                                    darkMode={
+                                        darkMode
+                                    }
+
                                     expanded={
                                         allCustomersExpanded
                                     }
+
                                     onPurchaseOrderUpdated={
                                         handlePurchaseOrderUpdated
                                     }
@@ -559,7 +635,13 @@ const Dashboard = () => {
                             }
                         >
 
-                            <p className="text-slate-500">
+                            <p
+                                className={
+                                    darkMode
+                                        ? "text-slate-400"
+                                        : "text-slate-500"
+                                }
+                            >
                                 No matching purchase orders found.
                             </p>
 

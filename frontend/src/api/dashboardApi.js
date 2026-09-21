@@ -71,3 +71,7 @@ export const getRenewalHistory = async (
 
     return response.data;
 };
+export const getImportHistory = async () => {
+    const response = await api.get("/import/history");
+    return response.data;
+};

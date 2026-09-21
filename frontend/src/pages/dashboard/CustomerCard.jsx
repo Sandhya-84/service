@@ -1,7 +1,5 @@
 import React, { useState } from "react";
-
 import PurchaseOrderCard from "./PurchaseOrderCard";
-
 
 const CustomerCard = ({
     customer,
@@ -25,7 +23,7 @@ const CustomerCard = ({
     // =========================
 
     const purchaseOrders =
-        customer.purchaseOrders || [];
+        customer?.purchaseOrders || [];
 
 
     // =========================
@@ -85,6 +83,15 @@ const CustomerCard = ({
     };
 
 
+    // =========================
+    // SAFETY CHECK
+    // =========================
+
+    if (!customer) {
+        return null;
+    }
+
+
     return (
 
         <div
@@ -94,7 +101,6 @@ const CustomerCard = ({
                     : "overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
             }
         >
-
 
             {/* ========================= */}
             {/* CUSTOMER HEADER */}
@@ -191,11 +197,7 @@ const CustomerCard = ({
 
                             {expiredCount}
 
-                            {" "}
-
-                            {expiredCount === 1
-                                ? "expired"
-                                : "expired"}
+                            {" expired"}
 
                         </span>
 
@@ -253,36 +255,29 @@ const CustomerCard = ({
                                     PO Number
                                 </th>
 
-
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Units
                                 </th>
-
 
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Invoice
                                 </th>
 
-
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Support Expiry
                                 </th>
-
 
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Status
                                 </th>
 
-
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Team
                                 </th>
 
-
                                 <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Renewed
                                 </th>
-
 
                                 <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                     Notes
@@ -297,19 +292,40 @@ const CustomerCard = ({
 
                         <tbody>
 
-                            {purchaseOrders.map(
-                                (po) => (
+                            {purchaseOrders.length === 0 ? (
 
-                                    <PurchaseOrderCard
-                                        key={po._id}
-                                        po={po}
-                                        darkMode={darkMode}
-                                        onPurchaseOrderUpdated={
-                                            onPurchaseOrderUpdated
+                                <tr>
+
+                                    <td
+                                        colSpan="8"
+                                        className={
+                                            darkMode
+                                                ? "px-4 py-6 text-center text-sm text-slate-400"
+                                                : "px-4 py-6 text-center text-sm text-slate-500"
                                         }
-                                    />
+                                    >
+                                        No purchase orders found.
+                                    </td>
 
+                                </tr>
+
+                            ) : (
+
+                                purchaseOrders.map(
+                                    (po) => (
+
+                                        <PurchaseOrderCard
+                                            key={po._id}
+                                            purchaseOrder={po}
+                                            darkMode={darkMode}
+                                            onPurchaseOrderUpdated={
+                                                onPurchaseOrderUpdated
+                                            }
+                                        />
+
+                                    )
                                 )
+
                             )}
 
                         </tbody>
@@ -325,6 +341,5 @@ const CustomerCard = ({
     );
 
 };
-
 
 export default CustomerCard;
