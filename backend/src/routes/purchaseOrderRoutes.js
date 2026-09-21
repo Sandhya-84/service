@@ -8,13 +8,13 @@ import {
 
 import authMiddleware from "../middleware/authMiddleware.js";
 
+
 const router = express.Router();
 
-router.post(
-    "/",
-    authMiddleware,
-    createPurchaseOrder
-);
+
+// =====================================================
+// GET PURCHASE ORDERS
+// =====================================================
 
 router.get(
     "/",
@@ -22,10 +22,27 @@ router.get(
     getPurchaseOrders
 );
 
+
+// =====================================================
+// CREATE PURCHASE ORDER
+// =====================================================
+
+router.post(
+    "/",
+    authMiddleware,
+    createPurchaseOrder
+);
+
+
+// =====================================================
+// UPDATE PURCHASE ORDER
+// =====================================================
+
 router.put(
     "/:id",
     authMiddleware,
     updatePurchaseOrder
 );
+
 
 export default router;

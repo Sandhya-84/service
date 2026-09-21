@@ -1,8 +1,14 @@
 import NetworkUnit from "../models/NetworkUnit.js";
 import PurchaseOrder from "../models/PurchaseOrder.js";
 
-export const createUnit = async (req, res) => {
+
+// =====================================================
+// CREATE NETWORK UNIT
+// =====================================================
+
+export const createNetworkUnit = async (req, res) => {
     try {
+
         const {
             purchaseOrderId,
             unitCode,
@@ -10,16 +16,38 @@ export const createUnit = async (req, res) => {
             radioConfiguration
         } = req.body;
 
-        if (!purchaseOrderId || !unitCode) {
+
+        // ---------------------------------------------
+        // VALIDATE PURCHASE ORDER
+        // ---------------------------------------------
+
+        if (!purchaseOrderId) {
             return res.status(400).json({
-                message: "Purchase order and unit code are required"
+                message: "Purchase order is required"
             });
         }
 
-        // Check whether the PO exists
-        const purchaseOrder = await PurchaseOrder.findById(
-            purchaseOrderId
-        );
+
+        // ---------------------------------------------
+        // VALIDATE UNIT CODE
+        // ---------------------------------------------
+
+        if (!unitCode || !unitCode.trim()) {
+            return res.status(400).json({
+                message: "Unit code is required"
+            });
+        }
+
+
+        // ---------------------------------------------
+        // CHECK PURCHASE ORDER
+        // ---------------------------------------------
+
+        const purchaseOrder =
+            await PurchaseOrder.findById(
+                purchaseOrderId
+            );
+
 
         if (!purchaseOrder) {
             return res.status(404).json({
@@ -27,63 +55,143 @@ export const createUnit = async (req, res) => {
             });
         }
 
-        // Check whether this unit already exists under this PO
-        const existingUnit = await NetworkUnit.findOne({
-            purchaseOrderId,
-            unitCode,
-            hostname
-        });
+
+        const cleanedUnitCode =
+            unitCode.trim();
+
+
+        const cleanedHostname =
+            hostname?.trim() || "";
+
+
+        // ---------------------------------------------
+        // CHECK DUPLICATE UNIT
+        // ---------------------------------------------
+
+        const existingUnit =
+            await NetworkUnit.findOne({
+                purchaseOrderId,
+                unitCode: cleanedUnitCode,
+                hostname: cleanedHostname
+            });
+
 
         if (existingUnit) {
-            return res.status(400).json({
-                message: "Unit already exists under this purchase order"
+            return res.status(409).json({
+                message:
+                    "This unit already exists for this purchase order"
             });
         }
 
-        const unit = await NetworkUnit.create({
-            purchaseOrderId,
-            unitCode,
-            hostname,
-            radioConfiguration
-        });
 
-        res.status(201).json({
-            message: "Unit created successfully",
-            unit
+        // ---------------------------------------------
+        // CREATE UNIT
+        // ---------------------------------------------
+
+        const networkUnit =
+            await NetworkUnit.create({
+
+                purchaseOrderId,
+
+                unitCode:
+                    cleanedUnitCode,
+
+                hostname:
+                    cleanedHostname,
+
+                radioConfiguration:
+                    radioConfiguration?.trim() || ""
+
+            });
+
+
+        return res.status(201).json({
+
+            message:
+                "Network unit created successfully",
+
+            networkUnit
+
         });
 
     } catch (error) {
-        res.status(500).json({
-            message: "Failed to create unit",
-            error: error.message
+
+        console.error(
+            "Create network unit error:",
+            error
+        );
+
+
+        return res.status(500).json({
+
+            message:
+                "Failed to create network unit",
+
+            error:
+                error.message
+
         });
     }
 };
 
 
-export const getUnits = async (req, res) => {
+// =====================================================
+// GET NETWORK UNITS
+// =====================================================
+
+export const getNetworkUnits = async (req, res) => {
     try {
-        const { purchaseOrderId } = req.query;
 
-        let query = {};
+        const {
+            purchaseOrderId
+        } = req.query;
 
-        // If PO ID is provided, get only units belonging to that PO
+
+        const query = {};
+
+
         if (purchaseOrderId) {
-            query.purchaseOrderId = purchaseOrderId;
+            query.purchaseOrderId =
+                purchaseOrderId;
         }
 
-        const units = await NetworkUnit.find(query)
-            .sort({ createdAt: -1 });
 
-        res.status(200).json({
-            count: units.length,
-            units
+        const networkUnits =
+            await NetworkUnit.find(query)
+                .populate(
+                    "purchaseOrderId",
+                    "poNumber"
+                )
+                .sort({
+                    createdAt: 1
+                });
+
+
+        return res.status(200).json({
+
+            count:
+                networkUnits.length,
+
+            networkUnits
+
         });
 
     } catch (error) {
-        res.status(500).json({
-            message: "Failed to fetch units",
-            error: error.message
+
+        console.error(
+            "Get network units error:",
+            error
+        );
+
+
+        return res.status(500).json({
+
+            message:
+                "Failed to fetch network units",
+
+            error:
+                error.message
+
         });
     }
 };

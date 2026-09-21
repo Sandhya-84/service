@@ -4,11 +4,26 @@ import {
     createCustomer,
     getCustomers
 } from "../controllers/customerController.js";
+
 import authMiddleware from "../middleware/authMiddleware.js";
+
 const router = express.Router();
 
-router.post("/", authMiddleware,createCustomer);
 
-router.get("/", authMiddleware,getCustomers);
+// Get all customers
+router.get(
+    "/",
+    authMiddleware,
+    getCustomers
+);
+
+
+// Create new customer
+router.post(
+    "/",
+    authMiddleware,
+    createCustomer
+);
+
 
 export default router;

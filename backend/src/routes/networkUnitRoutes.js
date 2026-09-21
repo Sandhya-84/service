@@ -1,14 +1,36 @@
 import express from "express";
 
 import {
-    createUnit,
-    getUnits
+    createNetworkUnit,
+    getNetworkUnits
 } from "../controllers/networkUnitController.js";
+
 import authMiddleware from "../middleware/authMiddleware.js";
+
+
 const router = express.Router();
 
-router.post("/",authMiddleware, createUnit);
 
-router.get("/", authMiddleware,getUnits);
+// =====================================================
+// GET NETWORK UNITS
+// =====================================================
+
+router.get(
+    "/",
+    authMiddleware,
+    getNetworkUnits
+);
+
+
+// =====================================================
+// CREATE NETWORK UNIT
+// =====================================================
+
+router.post(
+    "/",
+    authMiddleware,
+    createNetworkUnit
+);
+
 
 export default router;
