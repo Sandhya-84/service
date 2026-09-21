@@ -212,19 +212,7 @@ const ImportHistory = () => {
                     </div>
 
 
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate("/dashboard")
-                        }
-                        className={
-                            darkMode
-                                ? "rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                                : "rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                        }
-                    >
-                        ← Back to Dashboard
-                    </button>
+                    
 
                 </div>
 

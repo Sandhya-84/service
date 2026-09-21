@@ -1,23 +1,31 @@
-import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, {
+    useEffect,
+    useState
+} from "react";
+
+import {
+    useLocation,
+    useNavigate
+} from "react-router-dom";
 
 import { useTheme } from "../../context/ThemeContext";
+
 
 const DashboardHeader = ({
     onLogout
 }) => {
 
-    const navigate = useNavigate();
+    const navigate =
+        useNavigate();
+
+    const location =
+        useLocation();
 
     const {
         darkMode,
         toggleDarkMode
     } = useTheme();
 
-
-    // =========================
-    // USER NAME
-    // =========================
 
     const [userName, setUserName] =
         useState("User");
@@ -28,10 +36,14 @@ const DashboardHeader = ({
         try {
 
             const savedUser =
-                localStorage.getItem("user");
+                localStorage.getItem(
+                    "user"
+                );
 
             const savedUserName =
-                localStorage.getItem("userName");
+                localStorage.getItem(
+                    "userName"
+                );
 
 
             if (savedUserName) {
@@ -41,7 +53,6 @@ const DashboardHeader = ({
                 );
 
                 return;
-
             }
 
 
@@ -60,18 +71,18 @@ const DashboardHeader = ({
                     );
 
                     return;
-
                 }
 
 
-                if (parsedUser?.user?.name) {
+                if (
+                    parsedUser?.user?.name
+                ) {
 
                     setUserName(
                         parsedUser.user.name
                     );
 
                     return;
-
                 }
 
             }
@@ -88,13 +99,63 @@ const DashboardHeader = ({
     }, []);
 
 
+    const isActive = (
+        path
+    ) => {
+
+        return (
+            location.pathname === path
+        );
+
+    };
+
+
+    const menuItems = [
+
+        {
+            label: "Dashboard",
+            path: "/dashboard",
+            icon: "⌂"
+        },
+
+        {
+            label: "Add Customer",
+            path: "/add-customer",
+            icon: "+"
+        },
+
+        {
+            label: "Add PO",
+            path: "/add-purchase-order",
+            icon: "+"
+        },
+
+        {
+            label: "Import Excel",
+            path: "/import-excel",
+            icon: "↑"
+        },
+
+        {
+            label: "Import History",
+            path: "/import-history",
+            icon: "↕"
+        },
+
+        {
+            label: "Recent Activity",
+            path: "/recent-activity",
+            icon: "◉"
+        }
+
+    ];
+
+
     return (
 
         <>
 
-            {/* ================================================= */}
             {/* TOP HEADER */}
-            {/* ================================================= */}
 
             <header
                 className={`
@@ -116,7 +177,7 @@ const DashboardHeader = ({
 
                 <div
                     className="
-                        ml-60
+                        ml-[200px]
                         flex
                         h-full
                         items-center
@@ -131,21 +192,17 @@ const DashboardHeader = ({
                             mx-auto
                             flex
                             w-full
-                            max-w-7xl
+                            max-w-[1500px]
                             items-center
                             justify-between
                         "
                     >
 
-                        {/* ========================= */}
-                        {/* APP NAME */}
-                        {/* ========================= */}
-
                         <div>
 
                             <h1
                                 className={`
-                                    text-2xl
+                                    text-3xl
                                     font-bold
                                     tracking-tight
                                     ${
@@ -162,7 +219,7 @@ const DashboardHeader = ({
                             <p
                                 className={`
                                     mt-0.5
-                                    text-xs
+                                    text-s
                                     ${
                                         darkMode
                                             ? "text-slate-400"
@@ -177,19 +234,13 @@ const DashboardHeader = ({
                         </div>
 
 
-                        {/* ========================= */}
-                        {/* USER INFORMATION */}
-                        {/* ========================= */}
-
                         <div
                             className="
                                 flex
                                 items-center
-                                gap-3
+                                gap-5
                             "
                         >
-
-                            {/* USER AVATAR */}
 
                             <div
                                 className={`
@@ -214,13 +265,11 @@ const DashboardHeader = ({
                             </div>
 
 
-                            {/* USER NAME */}
-
-                            <div className="block">
+                            <div>
 
                                 <p
                                     className={`
-                                        text-sm
+                                        text-m
                                         font-semibold
                                         leading-tight
                                         ${
@@ -260,9 +309,7 @@ const DashboardHeader = ({
             </header>
 
 
-            {/* ================================================= */}
-            {/* LEFT SIDEBAR */}
-            {/* ================================================= */}
+            {/* SIDEBAR */}
 
             <aside
                 className={`
@@ -272,7 +319,7 @@ const DashboardHeader = ({
                     top-20
                     z-40
                     flex
-                    w-60
+                    w-[280px]
                     flex-col
                     border-r
                     ${
@@ -283,144 +330,134 @@ const DashboardHeader = ({
                 `}
             >
 
-                {/* ========================= */}
-                {/* NAVIGATION */}
-                {/* ========================= */}
-
-                <div
+                <nav
                     className="
                         flex-1
-                        space-y-3
                         overflow-y-auto
-                        p-4
+                        px-4
+                        py-6
                     "
                 >
 
-                    {/* ========================= */}
-                    {/* ADD CUSTOMER */}
-                    {/* ========================= */}
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate(
-                                "/add-customer"
-                            )
-                        }
-                        className="
-                            w-full
-                            rounded-lg
-                            bg-blue-600
-                            px-4
-                            py-3
-                            text-sm
-                            font-semibold
-                            text-white
-                            transition
-                            hover:bg-blue-700
-                        "
-                    >
-                        Add Customer
-                    </button>
-
-
-                    {/* ========================= */}
-                    {/* ADD PO */}
-                    {/* ========================= */}
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate(
-                                "/add-purchase-order"
-                            )
-                        }
-                        className="
-                            w-full
-                            rounded-lg
-                            bg-indigo-600
-                            px-4
-                            py-3
-                            text-sm
-                            font-semibold
-                            text-white
-                            transition
-                            hover:bg-indigo-700
-                        "
-                    >
-                        Add PO
-                    </button>
-
-
-                    {/* ========================= */}
-                    {/* IMPORT EXCEL */}
-                    {/* ========================= */}
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate(
-                                "/import-excel"
-                            )
-                        }
-                        className="
-                            w-full
-                            rounded-lg
-                            bg-emerald-600
-                            px-4
-                            py-3
-                            text-sm
-                            font-semibold
-                            text-white
-                            transition
-                            hover:bg-emerald-700
-                        "
-                    >
-                        Import Excel
-                    </button>
-
-
-                    {/* ========================= */}
-                    {/* IMPORT HISTORY */}
-                    {/* ========================= */}
-
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate(
-                                "/import-history"
-                            )
-                        }
+                    <p
                         className={`
-                            w-full
-                            rounded-lg
-                            border
-                            px-4
-                            py-3
-                            text-sm
+                            mb-4
+                            px-3
+                            text-s
                             font-semibold
-                            transition
+                            uppercase
+                            tracking-wider
                             ${
                                 darkMode
-                                    ? "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                                    ? "text-slate-500"
+                                    : "text-slate-400"
                             }
                         `}
                     >
-                        Import History
-                    </button>
-
-                </div>
+                        Navigation
+                    </p>
 
 
-                {/* ========================= */}
-                {/* BOTTOM ACTIONS */}
-                {/* ========================= */}
+                    <div
+                        className="
+                            space-y-2
+                        "
+                    >
+
+                        {menuItems.map(
+                            (item) => {
+
+                                const active =
+                                    isActive(
+                                        item.path
+                                    );
+
+
+                                return (
+
+                                    <button
+                                        key={
+                                            item.path
+                                        }
+                                        type="button"
+                                        onClick={() =>
+                                            navigate(
+                                                item.path
+                                            )
+                                        }
+                                        className={`
+                                            flex
+                                            w-full
+                                            items-center
+                                            gap-4
+                                            rounded-xl
+                                            px-4
+                                            py-3
+                                            text-left
+                                            text-lg
+                                            font-medium
+                                            transition-all
+                                            ${
+                                                active
+                                                    ? darkMode
+                                                        ? "bg-emerald-500/15 text-emerald-400"
+                                                        : "bg-emerald-50 text-emerald-700"
+                                                    : darkMode
+                                                        ? "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                                                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                                            }
+                                        `}
+                                    >
+
+                                        <span
+                                            className={`
+                                                flex
+                                                h-6
+                                                w-6
+                                                shrink-0
+                                                items-center
+                                                justify-center
+                                                text-lg
+                                                ${
+                                                    active
+                                                        ? darkMode
+                                                            ? "text-emerald-400"
+                                                            : "text-emerald-600"
+                                                        : ""
+                                                }
+                                            `}
+                                        >
+                                            {
+                                                item.icon
+                                            }
+                                        </span>
+
+
+                                        <span>
+                                            {
+                                                item.label
+                                            }
+                                        </span>
+
+                                    </button>
+
+                                );
+
+                            }
+                        )}
+
+                    </div>
+
+                </nav>
+
+
+                {/* BOTTOM MENU */}
 
                 <div
                     className={`
                         border-t
-                        p-4
+                        px-4
+                        py-5
                         ${
                             darkMode
                                 ? "border-slate-800"
@@ -429,61 +466,100 @@ const DashboardHeader = ({
                     `}
                 >
 
-                    {/* ========================= */}
-                    {/* DARK MODE */}
-                    {/* ========================= */}
-
                     <button
                         type="button"
                         onClick={
                             toggleDarkMode
                         }
                         className={`
-                            mb-3
+                            mb-2
+                            flex
                             w-full
-                            rounded-lg
-                            border
+                            items-center
+                            gap-4
+                            rounded-xl
                             px-4
                             py-3
+                            text-left
                             text-sm
-                            font-semibold
+                            font-medium
                             transition
                             ${
                                 darkMode
-                                    ? "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800"
-                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                                    ? "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                             }
                         `}
                     >
-                        {darkMode
-                            ? "Light Mode"
-                            : "Dark Mode"}
+
+                        <span
+                            className="
+                                flex
+                                h-6
+                                w-6
+                                items-center
+                                justify-center
+                                text-lg
+                            "
+                        >
+                            {darkMode
+                                ? "☀"
+                                : "☾"}
+                        </span>
+
+
+                        <span>
+                            {darkMode
+                                ? "Light Mode"
+                                : "Dark Mode"}
+                        </span>
+
                     </button>
 
-
-                    {/* ========================= */}
-                    {/* LOGOUT */}
-                    {/* ========================= */}
 
                     <button
                         type="button"
                         onClick={
                             onLogout
                         }
-                        className="
+                        className={`
+                            flex
                             w-full
-                            rounded-lg
-                            bg-red-600
+                            items-center
+                            gap-4
+                            rounded-xl
                             px-4
                             py-3
+                            text-left
                             text-sm
-                            font-semibold
-                            text-white
+                            font-large
                             transition
-                            hover:bg-red-700
-                        "
+                            ${
+                                darkMode
+                                    ? "text-red-400 hover:bg-red-950/40"
+                                    : "text-red-600 hover:bg-red-50"
+                            }
+                        `}
                     >
-                        Logout
+
+                        <span
+                            className="
+                                flex
+                                h-6
+                                w-6
+                                items-center
+                                justify-center
+                                text-lg
+                            "
+                        >
+                            ↪
+                        </span>
+
+
+                        <span>
+                            Logout
+                        </span>
+
                     </button>
 
                 </div>
@@ -495,5 +571,6 @@ const DashboardHeader = ({
     );
 
 };
+
 
 export default DashboardHeader;
