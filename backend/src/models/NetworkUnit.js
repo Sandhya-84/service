@@ -1,48 +1,100 @@
 import mongoose from "mongoose";
 
-const networkUnitSchema = new mongoose.Schema(
-    {
-        purchaseOrderId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "PurchaseOrder",
-            required: true
+const networkUnitSchema =
+    new mongoose.Schema(
+        {
+            customerId: {
+                type:
+                    mongoose.Schema.Types.ObjectId,
+                ref:
+                    "Customer",
+                required:
+                    true
+            },
+
+            purchaseOrderId: {
+                type:
+                    mongoose.Schema.Types.ObjectId,
+                ref:
+                    "PurchaseOrder",
+                default:
+                    null
+            },
+
+            unitCode: {
+                type:
+                    String,
+                required:
+                    true,
+                trim:
+                    true
+            },
+
+            hostname: {
+                type:
+                    String,
+                trim:
+                    true,
+                default:
+                    ""
+            },
+
+            radioConfiguration: {
+                type:
+                    String,
+                trim:
+                    true,
+                default:
+                    ""
+            },
+
+            additionalFields: {
+                type:
+                    mongoose.Schema.Types.Mixed,
+                default:
+                    {}
+            }
         },
 
-        unitCode: {
-            type: String,
-            required: true,
-            trim: true
-        },
-
-        hostname: {
-            type: String,
-            trim: true
-        },
-
-        radioConfiguration: {
-            type: String,
-            trim: true
+        {
+            timestamps:
+                true
         }
-    },
-    {
-        timestamps: true
-    }
-);
+    );
 
+
+/*
+ * A unit is unique inside a customer + PO + hostname
+ * combination.
+ *
+ * purchaseOrderId can be null for units that have
+ * no PO.
+ */
 networkUnitSchema.index(
     {
-        purchaseOrderId: 1,
-        unitCode: 1,
-        hostname: 1
+        customerId:
+            1,
+
+        purchaseOrderId:
+            1,
+
+        unitCode:
+            1,
+
+        hostname:
+            1
     },
     {
-        unique: true
+        unique:
+            true
     }
 );
 
-const NetworkUnit = mongoose.model(
-    "NetworkUnit",
-    networkUnitSchema
-);
+
+const NetworkUnit =
+    mongoose.model(
+        "NetworkUnit",
+        networkUnitSchema
+    );
 
 export default NetworkUnit;

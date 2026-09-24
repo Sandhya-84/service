@@ -2,34 +2,57 @@ import express from "express";
 
 import {
     createNetworkUnit,
-    getNetworkUnits
+    getNetworkUnits,
+    getNetworkUnitById,
+    getUnitsByPurchaseOrder,
+    getUnitsByCustomer,
+    updateNetworkUnit,
+    deleteNetworkUnit
 } from "../controllers/networkUnitController.js";
 
-import authMiddleware from "../middleware/authMiddleware.js";
+const router =
+    express.Router();
 
 
-const router = express.Router();
+router.post(
+    "/",
+    createNetworkUnit
+);
 
-
-// =====================================================
-// GET NETWORK UNITS
-// =====================================================
 
 router.get(
     "/",
-    authMiddleware,
     getNetworkUnits
 );
 
 
-// =====================================================
-// CREATE NETWORK UNIT
-// =====================================================
+router.get(
+    "/customer/:customerId",
+    getUnitsByCustomer
+);
 
-router.post(
-    "/",
-    authMiddleware,
-    createNetworkUnit
+
+router.get(
+    "/purchase-order/:purchaseOrderId",
+    getUnitsByPurchaseOrder
+);
+
+
+router.get(
+    "/:id",
+    getNetworkUnitById
+);
+
+
+router.put(
+    "/:id",
+    updateNetworkUnit
+);
+
+
+router.delete(
+    "/:id",
+    deleteNetworkUnit
 );
 
 
