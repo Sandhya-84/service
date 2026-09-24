@@ -178,6 +178,26 @@ const Dashboard = () => {
         .sort();
 
 
+    /*
+    ============================================
+    FILTER DASHBOARD DATA
+    ============================================
+
+    Important:
+
+    We DO NOT remove customers simply because
+    they have zero purchase orders.
+
+    This allows customers such as SkyUK to
+    appear as:
+
+        SkyUK
+        0 POs · 0 units
+
+    When filters/search are used, only matching
+    customers are shown.
+    */
+
     const filteredDashboardData =
 
         dashboardData
@@ -185,10 +205,44 @@ const Dashboard = () => {
             .map(
                 (customer) => {
 
+                    const searchText =
+                        search
+                            .toLowerCase()
+                            .trim();
+
+
+                    /*
+                    ========================================
+                    CUSTOMER NAME MATCH
+                    ========================================
+                    */
+
+                    const customerNameMatches =
+                        searchText
+                            ? String(
+                                customer.name || ""
+                            )
+                                .toLowerCase()
+                                .includes(
+                                    searchText
+                                )
+                            : false;
+
+
+                    /*
+                    ========================================
+                    FILTER PURCHASE ORDERS
+                    ========================================
+                    */
+
                     const filteredPurchaseOrders =
 
                         customer.purchaseOrders?.filter(
                             (po) => {
+
+                                /*
+                                STATUS FILTER
+                                */
 
                                 if (
                                     statusFilter &&
@@ -201,6 +255,10 @@ const Dashboard = () => {
                                 }
 
 
+                                /*
+                                TEAM FILTER
+                                */
+
                                 if (
                                     teamFilter &&
                                     po.team !==
@@ -212,8 +270,12 @@ const Dashboard = () => {
                                 }
 
 
+                                /*
+                                NO SEARCH
+                                */
+
                                 if (
-                                    !search.trim()
+                                    !searchText
                                 ) {
 
                                     return true;
@@ -221,11 +283,11 @@ const Dashboard = () => {
                                 }
 
 
-                                const searchText =
-                                    search
-                                        .toLowerCase()
-                                        .trim();
-
+                                /*
+                                ====================================
+                                SEARCH PURCHASE ORDER FIELDS
+                                ====================================
+                                */
 
                                 const poFields = [
 
@@ -248,8 +310,7 @@ const Dashboard = () => {
                                     poFields.some(
                                         (field) =>
                                             String(
-                                                field ||
-                                                ""
+                                                field || ""
                                             )
                                                 .toLowerCase()
                                                 .includes(
@@ -257,6 +318,12 @@ const Dashboard = () => {
                                                 )
                                     );
 
+
+                                /*
+                                ====================================
+                                SEARCH NETWORK UNIT FIELDS
+                                ====================================
+                                */
 
                                 const unitMatches =
                                     po.units?.some(
@@ -276,8 +343,7 @@ const Dashboard = () => {
                                             return unitFields.some(
                                                 (field) =>
                                                     String(
-                                                        field ||
-                                                        ""
+                                                        field || ""
                                                     )
                                                         .toLowerCase()
                                                         .includes(
@@ -303,17 +369,126 @@ const Dashboard = () => {
                         ...customer,
 
                         purchaseOrders:
-                            filteredPurchaseOrders
+                            filteredPurchaseOrders,
+
+                        customerNameMatches
 
                     };
 
                 }
             )
 
+            /*
+            ============================================
+            KEEP / REMOVE CUSTOMERS
+            ============================================
+
+            CASE 1:
+            No search/status/team filter
+            --------------------------------------------
+            Keep ALL customers.
+
+            This includes customers with:
+                0 POs
+                0 units
+
+            Example:
+                SkyUK
+                0 POs · 0 units
+
+
+            CASE 2:
+            Customer name matches search
+            --------------------------------------------
+            Keep the customer even if it has zero POs.
+
+
+            CASE 3:
+            Matching POs exist
+            --------------------------------------------
+            Keep the customer.
+
+
+            CASE 4:
+            Filters/search active but nothing matches
+            --------------------------------------------
+            Remove the customer.
+            */
+
             .filter(
-                (customer) =>
-                    customer.purchaseOrders?.length >
-                    0
+                (customer) => {
+
+                    const hasSearch =
+                        search.trim().length > 0;
+
+                    const hasStatusFilter =
+                        statusFilter.length > 0;
+
+                    const hasTeamFilter =
+                        teamFilter.length > 0;
+
+
+                    /*
+                    NO FILTERS AT ALL
+
+                    Show all 31 customers.
+                    */
+
+                    if (
+                        !hasSearch &&
+                        !hasStatusFilter &&
+                        !hasTeamFilter
+                    ) {
+
+                        return true;
+
+                    }
+
+
+                    /*
+                    CUSTOMER NAME SEARCH
+
+                    Example:
+                    Search = "SkyUK"
+
+                    SkyUK is displayed even when
+                    it has zero purchase orders.
+                    */
+
+                    if (
+                        hasSearch &&
+                        customer.customerNameMatches
+                    ) {
+
+                        return true;
+
+                    }
+
+
+                    /*
+                    MATCHING PURCHASE ORDERS
+
+                    If at least one PO remains after
+                    filtering/searching, display customer.
+                    */
+
+                    if (
+                        customer.purchaseOrders?.length >
+                        0
+                    ) {
+
+                        return true;
+
+                    }
+
+
+                    /*
+                    NOTHING MATCHED
+                    */
+
+                    return false;
+
+                }
             );
 
 
@@ -578,7 +753,7 @@ const Dashboard = () => {
                                     : "text-slate-500"
                             }
                         >
-                            No matching purchase orders found.
+                            No matching customers or purchase orders found.
                         </p>
 
                     </div>

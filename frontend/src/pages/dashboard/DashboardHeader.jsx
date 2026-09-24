@@ -155,7 +155,9 @@ const DashboardHeader = ({
 
         <>
 
-            {/* TOP HEADER */}
+            {/* =================================================
+                TOP HEADER
+            ================================================= */}
 
             <header
                 className={`
@@ -177,7 +179,7 @@ const DashboardHeader = ({
 
                 <div
                     className="
-                        ml-[200px]
+                        ml-[280px]
                         flex
                         h-full
                         items-center
@@ -197,6 +199,10 @@ const DashboardHeader = ({
                             justify-between
                         "
                     >
+
+                        {/* =================================================
+                            TITLE
+                        ================================================= */}
 
                         <div>
 
@@ -219,7 +225,7 @@ const DashboardHeader = ({
                             <p
                                 className={`
                                     mt-0.5
-                                    text-s
+                                    text-sm
                                     ${
                                         darkMode
                                             ? "text-slate-400"
@@ -233,6 +239,10 @@ const DashboardHeader = ({
 
                         </div>
 
+
+                        {/* =================================================
+                            USER
+                        ================================================= */}
 
                         <div
                             className="
@@ -269,7 +279,7 @@ const DashboardHeader = ({
 
                                 <p
                                     className={`
-                                        text-m
+                                        text-base
                                         font-semibold
                                         leading-tight
                                         ${
@@ -309,7 +319,9 @@ const DashboardHeader = ({
             </header>
 
 
-            {/* SIDEBAR */}
+            {/* =================================================
+                SIDEBAR
+            ================================================= */}
 
             <aside
                 className={`
@@ -343,7 +355,7 @@ const DashboardHeader = ({
                         className={`
                             mb-4
                             px-3
-                            text-s
+                            text-sm
                             font-semibold
                             uppercase
                             tracking-wider
@@ -451,7 +463,9 @@ const DashboardHeader = ({
                 </nav>
 
 
-                {/* BOTTOM MENU */}
+                {/* =================================================
+                    BOTTOM MENU
+                ================================================= */}
 
                 <div
                     className={`
@@ -465,6 +479,8 @@ const DashboardHeader = ({
                         }
                     `}
                 >
+
+                    {/* DARK MODE */}
 
                     <button
                         type="button"
@@ -517,6 +533,8 @@ const DashboardHeader = ({
                     </button>
 
 
+                    {/* LOGOUT */}
+
                     <button
                         type="button"
                         onClick={
@@ -532,7 +550,7 @@ const DashboardHeader = ({
                             py-3
                             text-left
                             text-sm
-                            font-large
+                            font-medium
                             transition
                             ${
                                 darkMode
