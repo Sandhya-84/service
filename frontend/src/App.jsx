@@ -21,6 +21,8 @@ import AddPurchaseOrder from "./pages/purchaseOrder/AddPurchaseOrder";
 
 import AddNetworkUnit from "./pages/networkUnit/AddNetworkUnit";
 
+import EvalPage from "./pages/eval/EvalPage";
+
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import DashboardLayout from "./pages/dashboard/DashboardLayout";
@@ -131,6 +133,24 @@ const App = () => {
                             <DashboardLayout>
 
                                 <ImportHistory />
+
+                            </DashboardLayout>
+
+                        </ProtectedRoute>
+                    }
+                />
+
+
+                {/* EVAL UNITS */}
+
+                <Route
+                    path="/eval"
+                    element={
+                        <ProtectedRoute>
+
+                            <DashboardLayout>
+
+                                <EvalPage />
 
                             </DashboardLayout>
 

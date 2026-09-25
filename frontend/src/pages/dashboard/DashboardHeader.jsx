@@ -137,6 +137,12 @@ const DashboardHeader = ({
         },
 
         {
+            label: "EVAL Units",
+            path: "/eval",
+            icon: "▣"
+        },
+
+        {
             label: "Import History",
             path: "/import-history",
             icon: "↕"
