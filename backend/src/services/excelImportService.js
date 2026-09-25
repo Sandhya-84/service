@@ -6,10 +6,22 @@ import NetworkUnit from "../models/NetworkUnit.js";
 import Import from "../models/Import.js";
 import EvalValue from "../models/EvalValue.js";
 
+
+/* =========================================================
+   BASIC HELPERS
+========================================================= */
+
 const cleanText = (value) => {
-    if (value === undefined || value === null) return "";
+    if (
+        value === undefined ||
+        value === null
+    ) {
+        return "";
+    }
+
     return String(value).trim();
 };
+
 
 const normalizeKey = (value) => {
     return cleanText(value)
@@ -19,11 +31,43 @@ const normalizeKey = (value) => {
         .trim();
 };
 
-const normalizeCustomerName = (sheetName) => {
-    const original = cleanText(sheetName);
-    const key = original.toLowerCase().replace(/[\s_-]+/g, "");
 
-    if (key === "cmin") return "Comcast";
+/* =========================================================
+   CUSTOMER NAME NORMALIZATION
+========================================================= */
+
+const normalizeCustomerName = (
+    sheetName
+) => {
+
+    const original =
+        cleanText(sheetName);
+
+    const key =
+        original
+            .toLowerCase()
+            .replace(/[\s_-]+/g, "");
+
+
+    /*
+     * IMPORTANT:
+     *
+     * Comcast and CMIN are the SAME customer.
+     *
+     * Both sheets are stored under:
+     *
+     *             Comcast
+     *
+     * Therefore their POs and units are
+     * combined under the same customerId.
+     */
+    if (
+        key === "comcast" ||
+        key === "cmin"
+    ) {
+        return "Comcast";
+    }
+
 
     if (
         key === "tataelxsi" ||
@@ -31,6 +75,7 @@ const normalizeCustomerName = (sheetName) => {
     ) {
         return "TataElxsi";
     }
+
 
     if (
         key === "technicolorvantiva" ||
@@ -40,16 +85,42 @@ const normalizeCustomerName = (sheetName) => {
         return "Technicolor-Vantiva";
     }
 
-    if (key === "altice") return "Altice";
-    if (key === "cambium") return "Cambium";
-    if (key === "commscope") return "CommScope";
-    if (key === "fpt") return "FPT";
-    if (key === "skyuk") return "SkyUK";
+
+    if (key === "altice") {
+        return "Altice";
+    }
+
+
+    if (key === "cambium") {
+        return "Cambium";
+    }
+
+
+    if (key === "commscope") {
+        return "CommScope";
+    }
+
+
+    if (key === "fpt") {
+        return "FPT";
+    }
+
+
+    if (key === "skyuk") {
+        return "SkyUK";
+    }
+
 
     return original;
 };
 
+
+/* =========================================================
+   STANDARD FIELD ALIASES
+========================================================= */
+
 const STANDARD_FIELDS = {
+
     unitCode: [
         "unit",
         "unit code",
@@ -97,7 +168,13 @@ const STANDARD_FIELDS = {
     ]
 };
 
+
+/* =========================================================
+   EVAL / DEMOS FIELD ALIASES
+========================================================= */
+
 const EVAL_FIELDS = {
+
     unit: [
         "unit",
         "unit code",
@@ -132,33 +209,80 @@ const EVAL_FIELDS = {
     ]
 };
 
-const findField = (row, aliases) => {
-    const keys = Object.keys(row);
 
-    for (const alias of aliases) {
-        const normalizedAlias = normalizeKey(alias);
+/* =========================================================
+   FIELD FINDERS
+========================================================= */
 
-        const found = keys.find(
-            (key) => normalizeKey(key) === normalizedAlias
-        );
+const findField = (
+    row,
+    aliases
+) => {
 
-        if (found !== undefined) {
+    const keys =
+        Object.keys(row);
+
+
+    for (
+        const alias
+        of aliases
+    ) {
+
+        const normalizedAlias =
+            normalizeKey(alias);
+
+
+        const found =
+            keys.find(
+                (key) =>
+                    normalizeKey(key) ===
+                    normalizedAlias
+            );
+
+
+        if (
+            found !== undefined
+        ) {
             return found;
         }
     }
 
+
     return null;
 };
 
-const getField = (row, aliases) => {
-    const field = findField(row, aliases);
 
-    if (!field) return "";
+const getField = (
+    row,
+    aliases
+) => {
 
-    return cleanText(row[field]);
+    const field =
+        findField(
+            row,
+            aliases
+        );
+
+
+    if (!field) {
+        return "";
+    }
+
+
+    return cleanText(
+        row[field]
+    );
 };
 
-const parseExcelDate = (value) => {
+
+/* =========================================================
+   DATE PARSER
+========================================================= */
+
+const parseExcelDate = (
+    value
+) => {
+
     if (
         value === undefined ||
         value === null ||
@@ -167,14 +291,33 @@ const parseExcelDate = (value) => {
         return null;
     }
 
-    if (value instanceof Date) {
-        return isNaN(value.getTime()) ? null : value;
+
+    if (
+        value instanceof Date
+    ) {
+
+        return isNaN(
+            value.getTime()
+        )
+            ? null
+            : value;
     }
 
-    if (typeof value === "number") {
-        const parsed = XLSX.SSF.parse_date_code(value);
 
-        if (!parsed) return null;
+    if (
+        typeof value === "number"
+    ) {
+
+        const parsed =
+            XLSX.SSF.parse_date_code(
+                value
+            );
+
+
+        if (!parsed) {
+            return null;
+        }
+
 
         return new Date(
             parsed.y,
@@ -186,28 +329,64 @@ const parseExcelDate = (value) => {
         );
     }
 
-    const text = cleanText(value);
 
-    if (!text) return null;
+    const text =
+        cleanText(value);
 
-    const date = new Date(text);
 
-    return !isNaN(date.getTime()) ? date : null;
+    if (!text) {
+        return null;
+    }
+
+
+    const date =
+        new Date(text);
+
+
+    if (
+        !isNaN(
+            date.getTime()
+        )
+    ) {
+        return date;
+    }
+
+
+    return null;
 };
 
-const isHeaderRow = (row) => {
-    if (!Array.isArray(row)) return false;
 
-    const values = row.map(normalizeKey);
+/* =========================================================
+   HEADER DETECTION
+========================================================= */
+
+const isHeaderRow = (
+    row
+) => {
+
+    if (
+        !Array.isArray(row)
+    ) {
+        return false;
+    }
+
+
+    const values =
+        row.map(
+            normalizeKey
+        );
+
 
     const hasUnit =
         values.includes("unit") ||
         values.includes("unit code") ||
         values.includes("unitcode");
 
+
     const hasHostname =
         values.includes("hostname") ||
         values.includes("host name");
+
 
     const hasPO =
         values.includes("po-details") ||
@@ -215,269 +394,465 @@ const isHeaderRow = (row) => {
         values.includes("po -details") ||
         values.includes("po");
 
-    const hasRadio =
-        values.includes("radio configuration") ||
-        values.includes("radio config") ||
-        values.includes("radios");
 
-    return hasUnit || hasHostname || hasPO || hasRadio;
+    const hasRadio =
+        values.includes(
+            "radio configuration"
+        ) ||
+        values.includes(
+            "radio config"
+        ) ||
+        values.includes(
+            "radios"
+        );
+
+
+    return (
+        hasUnit ||
+        hasHostname ||
+        hasPO ||
+        hasRadio
+    );
 };
 
-const sheetToRows = (worksheet) => {
-    const matrix = XLSX.utils.sheet_to_json(
-        worksheet,
-        {
-            header: 1,
-            defval: ""
-        }
-    );
+
+/* =========================================================
+   SHEET → ROW OBJECTS
+========================================================= */
+
+const sheetToRows = (
+    worksheet
+) => {
+
+    const matrix =
+        XLSX.utils.sheet_to_json(
+            worksheet,
+            {
+                header: 1,
+                defval: ""
+            }
+        );
+
 
     const result = [];
-    let currentHeaders = null;
 
-    for (const row of matrix) {
-        if (!row || row.length === 0) continue;
 
-        if (isHeaderRow(row)) {
-            currentHeaders = row.map(
-                (header) => cleanText(header)
-            );
+    let currentHeaders =
+        null;
+
+
+    for (
+        let rowIndex = 0;
+        rowIndex < matrix.length;
+        rowIndex++
+    ) {
+
+        const row =
+            matrix[rowIndex];
+
+
+        if (
+            !row ||
+            row.length === 0
+        ) {
+            continue;
+        }
+
+
+        if (
+            isHeaderRow(row)
+        ) {
+
+            currentHeaders =
+                row.map(
+                    (header) =>
+                        cleanText(header)
+                );
 
             continue;
         }
 
-        if (!currentHeaders) continue;
+
+        if (
+            !currentHeaders
+        ) {
+            continue;
+        }
+
 
         const objectRow = {};
 
+
         currentHeaders.forEach(
-            (header, index) => {
-                if (!header) return;
+            (
+                header,
+                index
+            ) => {
+
+                if (!header) {
+                    return;
+                }
+
 
                 objectRow[header] =
                     row[index] ?? "";
             }
         );
 
+
         const hasAnyValue =
-            Object.values(objectRow).some(
+            Object.values(
+                objectRow
+            ).some(
                 (value) =>
-                    cleanText(value) !== ""
+                    cleanText(
+                        value
+                    ) !== ""
             );
 
+
         if (hasAnyValue) {
-            result.push(objectRow);
+
+            result.push(
+                objectRow
+            );
         }
     }
+
 
     return result;
 };
 
-const processJuniperSheet = async (
-    worksheet,
-    sheetName,
-    stats
-) => {
-    const matrix = XLSX.utils.sheet_to_json(
+
+/* =========================================================
+   JUNIPER SPECIAL SHEET
+========================================================= */
+
+const processJuniperSheet =
+    async (
         worksheet,
-        {
-            header: 1,
-            defval: ""
-        }
-    );
+        sheetName,
+        stats
+    ) => {
 
-    const sections = [];
+        const matrix =
+            XLSX.utils.sheet_to_json(
+                worksheet,
+                {
+                    header: 1,
+                    defval: ""
+                }
+            );
 
-    for (
-        let i = 0;
-        i < matrix.length;
-        i++
-    ) {
-        const row = matrix[i] || [];
 
-        const normalized =
-            row.map(normalizeKey);
+        const sections = [];
 
-        const unitIndex =
-            normalized.indexOf("unit");
-
-        const hostnameIndex =
-            normalized.indexOf("hostname");
-
-        if (
-            unitIndex !== -1 &&
-            hostnameIndex !== -1
-        ) {
-            sections.push({
-                rowIndex: i,
-                startColumn: unitIndex
-            });
-        }
-    }
-
-    if (sections.length === 0) {
-        await processNormalRows(
-            sheetToRows(worksheet),
-            sheetName,
-            stats
-        );
-
-        return;
-    }
-
-    for (
-        let sectionIndex = 0;
-        sectionIndex < sections.length;
-        sectionIndex++
-    ) {
-        const section =
-            sections[sectionIndex];
-
-        const nextSection =
-            sections[sectionIndex + 1];
-
-        const startRow =
-            section.rowIndex + 1;
-
-        const endRow =
-            nextSection
-                ? nextSection.rowIndex
-                : matrix.length;
-
-        const headers =
-            matrix[section.rowIndex];
-
-        const startColumn =
-            section.startColumn;
-
-        let endColumn =
-            headers.length;
 
         for (
-            let column =
-                startColumn + 1;
-            column < headers.length;
-            column++
+            let i = 0;
+            i < matrix.length;
+            i++
         ) {
-            if (
-                normalizeKey(
-                    headers[column]
-                ) === "unit"
-            ) {
-                endColumn = column;
-                break;
-            }
-        }
 
-        const rows = [];
+            const row =
+                matrix[i] || [];
 
-        for (
-            let rowIndex = startRow;
-            rowIndex < endRow;
-            rowIndex++
-        ) {
-            const source =
-                matrix[rowIndex];
 
-            if (!source) continue;
-
-            const row = {};
-
-            for (
-                let column = startColumn;
-                column < endColumn;
-                column++
-            ) {
-                const header =
-                    cleanText(
-                        headers[column]
-                    );
-
-                if (!header) continue;
-
-                row[header] =
-                    source[column] ?? "";
-            }
-
-            const hasValue =
-                Object.values(row).some(
-                    (value) =>
-                        cleanText(value) !== ""
+            const normalized =
+                row.map(
+                    normalizeKey
                 );
 
-            if (hasValue) {
-                rows.push(row);
+
+            const unitIndex =
+                normalized.indexOf(
+                    "unit"
+                );
+
+
+            const hostnameIndex =
+                normalized.indexOf(
+                    "hostname"
+                );
+
+
+            if (
+                unitIndex !== -1 &&
+                hostnameIndex !== -1
+            ) {
+
+                sections.push({
+                    rowIndex: i,
+                    startColumn:
+                        unitIndex
+                });
             }
         }
 
-        await processNormalRows(
-            rows,
-            sheetName,
-            stats
-        );
-    }
-};
+
+        if (
+            sections.length === 0
+        ) {
+
+            const rows =
+                sheetToRows(
+                    worksheet
+                );
+
+
+            await processNormalRows(
+                rows,
+                sheetName,
+                stats
+            );
+
+            return;
+        }
+
+
+        for (
+            let sectionIndex = 0;
+            sectionIndex <
+            sections.length;
+            sectionIndex++
+        ) {
+
+            const section =
+                sections[
+                    sectionIndex
+                ];
+
+
+            const nextSection =
+                sections[
+                    sectionIndex + 1
+                ];
+
+
+            const startRow =
+                section.rowIndex + 1;
+
+
+            const endRow =
+                nextSection
+                    ? nextSection.rowIndex
+                    : matrix.length;
+
+
+            const headers =
+                matrix[
+                    section.rowIndex
+                ];
+
+
+            const startColumn =
+                section.startColumn;
+
+
+            let endColumn =
+                headers.length;
+
+
+            for (
+                let c =
+                    startColumn + 1;
+                c < headers.length;
+                c++
+            ) {
+
+                const value =
+                    normalizeKey(
+                        headers[c]
+                    );
+
+
+                if (
+                    value === "unit"
+                ) {
+
+                    endColumn = c;
+
+                    break;
+                }
+            }
+
+
+            const rows = [];
+
+
+            for (
+                let r =
+                    startRow;
+                r < endRow;
+                r++
+            ) {
+
+                const source =
+                    matrix[r];
+
+
+                if (!source) {
+                    continue;
+                }
+
+
+                const row = {};
+
+
+                for (
+                    let c =
+                        startColumn;
+                    c < endColumn;
+                    c++
+                ) {
+
+                    const header =
+                        cleanText(
+                            headers[c]
+                        );
+
+
+                    if (!header) {
+                        continue;
+                    }
+
+
+                    row[header] =
+                        source[c] ?? "";
+                }
+
+
+                const hasValue =
+                    Object.values(
+                        row
+                    ).some(
+                        (value) =>
+                            cleanText(
+                                value
+                            ) !== ""
+                    );
+
+
+                if (hasValue) {
+
+                    rows.push(
+                        row
+                    );
+                }
+            }
+
+
+            await processNormalRows(
+                rows,
+                sheetName,
+                stats
+            );
+        }
+    };
+
+
+/* =========================================================
+   ADDITIONAL FIELDS
+========================================================= */
 
 const buildAdditionalFields = (
     row,
     knownAliases
 ) => {
+
     const additional = {};
+
 
     const knownKeys =
         new Set(
-            knownAliases.map(normalizeKey)
+            knownAliases.map(
+                normalizeKey
+            )
         );
+
 
     for (
         const [key, value]
         of Object.entries(row)
     ) {
+
         const normalized =
             normalizeKey(key);
 
+
         if (
-            knownKeys.has(normalized)
+            knownKeys.has(
+                normalized
+            )
         ) {
             continue;
         }
 
+
         const cleaned =
             cleanText(value);
 
-        if (cleaned !== "") {
+
+        if (
+            cleaned !== ""
+        ) {
+
             additional[key] =
                 cleaned;
         }
     }
 
+
     return additional;
 };
 
+
+/* =========================================================
+   CUSTOMER
+========================================================= */
+
 const getOrCreateCustomer =
-    async (customerName) => {
+    async (
+        customerName
+    ) => {
+
         const cleanName =
-            cleanText(customerName);
+            cleanText(
+                customerName
+            );
+
 
         if (!cleanName) {
             return null;
         }
+
 
         let customer =
             await Customer.findOne({
                 name: cleanName
             });
 
+
         if (!customer) {
+
             customer =
                 await Customer.create({
-                    name: cleanName,
-                    additionalFields: {}
+                    name:
+                        cleanName,
+
+                    additionalFields:
+                        {}
                 });
         }
 
+
         return customer;
     };
+
+
+/* =========================================================
+   PURCHASE ORDER
+========================================================= */
 
 const getOrCreatePO =
     async ({
@@ -487,6 +862,7 @@ const getOrCreatePO =
         supportExpiryDate,
         additionalFields
     }) => {
+
         if (
             !poNumber ||
             !customerId
@@ -494,50 +870,84 @@ const getOrCreatePO =
             return null;
         }
 
+
+        /*
+         * IMPORTANT:
+         *
+         * PO identity is:
+         *
+         * customerId + poNumber
+         *
+         * Because CMIN and Comcast use the
+         * SAME Comcast customerId, a PO existing
+         * in both sheets is stored only once.
+         */
         let purchaseOrder =
             await PurchaseOrder.findOne({
                 customerId,
                 poNumber
             });
 
+
         if (!purchaseOrder) {
-            return PurchaseOrder.create({
-                customerId,
-                poNumber,
 
-                invoiceNumber:
-                    invoiceNumber || "",
+            purchaseOrder =
+                await PurchaseOrder.create({
 
-                supportExpiryDate:
-                    supportExpiryDate ||
-                    undefined,
+                    customerId,
 
-                additionalFields:
-                    additionalFields || {}
-            });
+                    poNumber,
+
+                    invoiceNumber:
+                        invoiceNumber ||
+                        "",
+
+                    supportExpiryDate:
+                        supportExpiryDate ||
+                        undefined,
+
+                    additionalFields:
+                        additionalFields ||
+                        {}
+                });
+
+
+            return purchaseOrder;
         }
 
-        let changed = false;
 
+        let changed =
+            false;
+
+
+        /*
+         * If the PO already exists,
+         * fill missing information from
+         * the second sheet.
+         */
         if (
             invoiceNumber &&
             !purchaseOrder.invoiceNumber
         ) {
+
             purchaseOrder.invoiceNumber =
                 invoiceNumber;
 
             changed = true;
         }
 
+
         if (
             supportExpiryDate &&
             !purchaseOrder.supportExpiryDate
         ) {
+
             purchaseOrder.supportExpiryDate =
                 supportExpiryDate;
 
             changed = true;
         }
+
 
         if (
             additionalFields &&
@@ -545,21 +955,30 @@ const getOrCreatePO =
                 additionalFields
             ).length > 0
         ) {
+
             purchaseOrder.additionalFields =
                 {
-                    ...(purchaseOrder.additionalFields || {}),
+                    ...(purchaseOrder.additionalFields ||
+                        {}),
                     ...additionalFields
                 };
 
             changed = true;
         }
 
+
         if (changed) {
             await purchaseOrder.save();
         }
 
+
         return purchaseOrder;
     };
+
+
+/* =========================================================
+   NETWORK UNIT
+========================================================= */
 
 const getOrCreateUnit =
     async ({
@@ -570,6 +989,7 @@ const getOrCreateUnit =
         radioConfiguration,
         additionalFields
     }) => {
+
         if (
             !customerId ||
             !unitCode
@@ -577,54 +997,90 @@ const getOrCreateUnit =
             return null;
         }
 
+
+        /*
+         * IMPORTANT:
+         *
+         * A unit is unique by:
+         *
+         * customerId
+         * purchaseOrderId
+         * unitCode
+         * hostname
+         *
+         * Therefore the same unit under two
+         * different POs is NOT merged.
+         *
+         * This preserves historical records.
+         */
         const filter = {
+
             customerId,
 
             purchaseOrderId:
-                purchaseOrderId || null,
+                purchaseOrderId ||
+                null,
 
             unitCode,
 
             hostname:
-                hostname || ""
+                hostname ||
+                ""
         };
+
 
         let unit =
             await NetworkUnit.findOne(
                 filter
             );
 
+
         if (!unit) {
-            return NetworkUnit.create({
-                customerId,
 
-                purchaseOrderId:
-                    purchaseOrderId || null,
+            unit =
+                await NetworkUnit.create({
 
-                unitCode,
+                    customerId,
 
-                hostname:
-                    hostname || "",
+                    purchaseOrderId:
+                        purchaseOrderId ||
+                        null,
 
-                radioConfiguration:
-                    radioConfiguration || "",
+                    unitCode,
 
-                additionalFields:
-                    additionalFields || {}
-            });
+                    hostname:
+                        hostname ||
+                        "",
+
+                    radioConfiguration:
+                        radioConfiguration ||
+                        "",
+
+                    additionalFields:
+                        additionalFields ||
+                        {}
+                });
+
+
+            return unit;
         }
 
-        let changed = false;
+
+        let changed =
+            false;
+
 
         if (
             radioConfiguration &&
             !unit.radioConfiguration
         ) {
+
             unit.radioConfiguration =
                 radioConfiguration;
 
             changed = true;
         }
+
 
         if (
             additionalFields &&
@@ -632,39 +1088,52 @@ const getOrCreateUnit =
                 additionalFields
             ).length > 0
         ) {
+
             unit.additionalFields =
                 {
-                    ...(unit.additionalFields || {}),
+                    ...(unit.additionalFields ||
+                        {}),
                     ...additionalFields
                 };
 
             changed = true;
         }
 
+
         if (changed) {
             await unit.save();
         }
 
+
         return unit;
     };
+
+
+/* =========================================================
+   PROCESS STANDARD ROW
+========================================================= */
 
 const processStandardRow =
     async ({
         row,
         customer,
+        sheetName,
         stats
     }) => {
+
         const unitCode =
             getField(
                 row,
                 STANDARD_FIELDS.unitCode
             );
 
+
         const hostname =
             getField(
                 row,
                 STANDARD_FIELDS.hostname
             );
+
 
         const radioConfiguration =
             getField(
@@ -673,11 +1142,13 @@ const processStandardRow =
                     .radioConfiguration
             );
 
+
         const poNumber =
             getField(
                 row,
                 STANDARD_FIELDS.poNumber
             );
+
 
         const invoiceNumber =
             getField(
@@ -686,6 +1157,7 @@ const processStandardRow =
                     .invoiceNumber
             );
 
+
         const expiryField =
             findField(
                 row,
@@ -693,12 +1165,14 @@ const processStandardRow =
                     .supportExpiryDate
             );
 
+
         const supportExpiryDate =
             expiryField
                 ? parseExcelDate(
                     row[expiryField]
                 )
                 : null;
+
 
         if (
             !unitCode &&
@@ -709,16 +1183,28 @@ const processStandardRow =
             return;
         }
 
+
         const unitKey =
-            normalizeKey(unitCode);
+            normalizeKey(
+                unitCode
+            );
+
 
         if (
-            unitKey === "new systems" ||
+            unitKey ===
+            "new systems"
+        ) {
+            return;
+        }
+
+
+        if (
             unitKey === "unit" ||
             unitKey === "hostname"
         ) {
             return;
         }
+
 
         const additionalFields =
             buildAdditionalFields(
@@ -744,11 +1230,16 @@ const processStandardRow =
                 ]
             );
 
-        let purchaseOrder = null;
+
+        let purchaseOrder =
+            null;
+
 
         if (poNumber) {
+
             purchaseOrder =
                 await getOrCreatePO({
+
                     customerId:
                         customer._id,
 
@@ -761,14 +1252,20 @@ const processStandardRow =
                     additionalFields
                 });
 
-            if (purchaseOrder) {
+
+            if (
+                purchaseOrder
+            ) {
+
                 stats
                     .purchaseOrdersCreatedOrFound++;
             }
         }
 
+
         const unit =
             await getOrCreateUnit({
+
                 customerId:
                     customer._id,
 
@@ -786,11 +1283,18 @@ const processStandardRow =
                 additionalFields
             });
 
+
         if (unit) {
+
             stats
                 .unitsCreatedOrFound++;
         }
     };
+
+
+/* =========================================================
+   PROCESS NORMAL SHEET
+========================================================= */
 
 const processNormalRows =
     async (
@@ -798,35 +1302,80 @@ const processNormalRows =
         sheetName,
         stats
     ) => {
+
+        /*
+         * This is where the Comcast/CMIN
+         * union happens.
+         *
+         * Comcast → Comcast
+         * CMIN    → Comcast
+         */
         const customerName =
             normalizeCustomerName(
                 sheetName
             );
 
+
+        /*
+         * Demos is handled separately
+         * by importDemosSheet().
+         */
+        if (
+            normalizeKey(
+                sheetName
+            ) === "demos"
+        ) {
+            return;
+        }
+
+
+        /*
+         * IMPORTANT:
+         *
+         * If Comcast sheet is processed first,
+         * a Comcast customer is created.
+         *
+         * When CMIN is processed later,
+         * normalizeCustomerName("CMIN")
+         * returns "Comcast".
+         *
+         * Therefore getOrCreateCustomer()
+         * finds the SAME customer.
+         */
         const customer =
             await getOrCreateCustomer(
                 customerName
             );
 
+
         if (!customer) {
             return;
         }
+
 
         stats.customersSeen.add(
             customerName
         );
 
+
         for (
             const row
             of rows
         ) {
+
             await processStandardRow({
                 row,
                 customer,
+                sheetName,
                 stats
             });
         }
     };
+
+
+/* =========================================================
+   PROCESS STANDARD SHEET
+========================================================= */
 
 const processStandardSheet =
     async (
@@ -834,20 +1383,28 @@ const processStandardSheet =
         sheetName,
         stats
     ) => {
+
         const worksheet =
             workbook.Sheets[
                 sheetName
             ];
 
+
         if (!worksheet) {
             return;
         }
 
+
+        /*
+         * Juniper contains two separate
+         * header/data sections.
+         */
         if (
             normalizeKey(
                 sheetName
             ) === "juniper"
         ) {
+
             await processJuniperSheet(
                 worksheet,
                 sheetName,
@@ -857,52 +1414,90 @@ const processStandardSheet =
             return;
         }
 
-        await processNormalRows(
+
+        const rows =
             sheetToRows(
                 worksheet
-            ),
+            );
+
+
+        await processNormalRows(
+            rows,
             sheetName,
             stats
         );
     };
 
+
 /* =========================================================
-   EVAL / DEMOS
+   EVAL / DEMOS HEADER DETECTION
 ========================================================= */
 
 const isEvalHeaderRow =
     (row) => {
-        if (!Array.isArray(row)) {
+
+        if (
+            !Array.isArray(row)
+        ) {
             return false;
         }
 
+
         const values =
-            row.map(normalizeKey);
+            row.map(
+                normalizeKey
+            );
+
 
         const hasUnit =
             values.includes("unit") ||
             values.includes("unit code") ||
             values.includes("unitcode");
 
+
         const hasHostname =
             values.includes("hostname") ||
             values.includes("host name");
 
+
         const hasRadio =
-            values.includes("radio config") ||
-            values.includes("radio configuration") ||
-            values.includes("radios") ||
-            values.includes("radio");
+            values.includes(
+                "radio config"
+            ) ||
+            values.includes(
+                "radio configuration"
+            ) ||
+            values.includes(
+                "radios"
+            ) ||
+            values.includes(
+                "radio"
+            );
+
 
         const hasShipmentDate =
-            values.includes("shipment date") ||
-            values.includes("shipmentdate") ||
-            values.includes("shipped date") ||
-            values.includes("ship date");
+            values.includes(
+                "shipment date"
+            ) ||
+            values.includes(
+                "shipmentdate"
+            ) ||
+            values.includes(
+                "shipped date"
+            ) ||
+            values.includes(
+                "ship date"
+            );
+
 
         const hasCustomer =
-            values.includes("customer") ||
-            values.includes("customer name");
+            values.includes(
+                "customer"
+            ) ||
+            values.includes(
+                "customer name"
+            );
+
 
         return (
             hasUnit ||
@@ -913,14 +1508,19 @@ const isEvalHeaderRow =
         );
     };
 
+
+/* =========================================================
+   EVAL / DEMOS ROW READER
+========================================================= */
+
 const getEvalRows =
     (worksheet) => {
+
         /*
-         * raw:false is important here.
+         * raw:false is intentional.
          *
-         * Shipment Date in EVAL is kept as the
-         * displayed Excel value rather than
-         * converting it to a MongoDB Date.
+         * Shipment Date remains the displayed
+         * Excel value as a string.
          */
         const matrix =
             XLSX.utils.sheet_to_json(
@@ -932,13 +1532,19 @@ const getEvalRows =
                 }
             );
 
+
         const rows = [];
-        let headers = null;
+
+
+        let headers =
+            null;
+
 
         for (
             const row
             of matrix
         ) {
+
             if (
                 !row ||
                 row.length === 0
@@ -946,56 +1552,82 @@ const getEvalRows =
                 continue;
             }
 
+
             if (
                 isEvalHeaderRow(row)
             ) {
+
                 headers =
                     row.map(
                         (header) =>
                             cleanText(header)
                     );
 
+
                 continue;
             }
+
 
             if (!headers) {
                 continue;
             }
 
+
             const objectRow = {};
 
+
             headers.forEach(
-                (header, index) => {
+                (
+                    header,
+                    index
+                ) => {
+
                     if (!header) {
                         return;
                     }
+
 
                     objectRow[header] =
                         row[index] ?? "";
                 }
             );
 
+
             const hasAnyValue =
                 Object.values(
                     objectRow
                 ).some(
                     (value) =>
-                        cleanText(value) !== ""
+                        cleanText(
+                            value
+                        ) !== ""
                 );
 
+
             if (hasAnyValue) {
+
                 rows.push(
                     objectRow
                 );
             }
         }
 
+
         return rows;
     };
 
+
+/* =========================================================
+   IMPORT DEMOS → EVAL VALUE
+========================================================= */
+
 const importDemosSheet =
-    async (worksheet) => {
+    async (
+        worksheet
+    ) => {
+
         if (!worksheet) {
+
             return {
                 found: false,
                 totalRows: 0,
@@ -1004,23 +1636,30 @@ const importDemosSheet =
             };
         }
 
+
         const rows =
             getEvalRows(
                 worksheet
             );
 
+
         const operations = [];
+
+
         let skipped = 0;
+
 
         for (
             const row
             of rows
         ) {
+
             const unit =
                 getField(
                     row,
                     EVAL_FIELDS.unit
                 );
+
 
             const hostname =
                 getField(
@@ -1028,11 +1667,13 @@ const importDemosSheet =
                     EVAL_FIELDS.hostname
                 );
 
+
             const radioConfig =
                 getField(
                     row,
                     EVAL_FIELDS.radioConfig
                 );
+
 
             const shipmentDate =
                 getField(
@@ -1040,18 +1681,29 @@ const importDemosSheet =
                     EVAL_FIELDS.shipmentDate
                 );
 
+
             const customer =
                 getField(
                     row,
                     EVAL_FIELDS.customer
                 );
 
+
             const normalizedUnit =
-                normalizeKey(unit);
+                normalizeKey(
+                    unit
+                );
+
 
             const normalizedHostname =
-                normalizeKey(hostname);
+                normalizeKey(
+                    hostname
+                );
 
+
+            /*
+             * Ignore completely empty rows.
+             */
             if (
                 !unit &&
                 !hostname &&
@@ -1059,20 +1711,35 @@ const importDemosSheet =
                 !shipmentDate &&
                 !customer
             ) {
+
                 skipped++;
+
                 continue;
             }
 
+
+            /*
+             * Ignore header-like rows.
+             */
             if (
                 normalizedUnit === "unit" ||
                 normalizedHostname === "hostname"
             ) {
+
                 skipped++;
+
                 continue;
             }
 
+
             operations.push({
+
                 updateOne: {
+
+                    /*
+                     * Same customer + unit + hostname
+                     * means same EVAL record.
+                     */
                     filter: {
                         customer,
                         unit,
@@ -1094,16 +1761,21 @@ const importDemosSheet =
             });
         }
 
+
         /*
-         * Demos represents the latest EVAL snapshot.
-         * Clear the old EVAL data and insert the data
-         * from this main Excel upload.
+         * Demos represents the latest EVAL
+         * snapshot from the latest main Excel upload.
+         *
+         * Therefore remove the old EVAL snapshot
+         * before inserting the newly uploaded one.
          */
         await EvalValue.deleteMany({});
+
 
         if (
             operations.length > 0
         ) {
+
             await EvalValue.bulkWrite(
                 operations,
                 {
@@ -1112,23 +1784,33 @@ const importDemosSheet =
             );
         }
 
+
         return {
+
             found: true,
-            totalRows: rows.length,
-            imported: operations.length,
+
+            totalRows:
+                rows.length,
+
+            imported:
+                operations.length,
+
             skipped
         };
     };
 
+
 /* =========================================================
-   MAIN IMPORT
+   MAIN IMPORT FUNCTION
 ========================================================= */
 
 export const importExcelFile =
     async (
         file
     ) => {
+
         const stats = {
+
             customersSeen:
                 new Set(),
 
@@ -1139,31 +1821,43 @@ export const importExcelFile =
                 0
         };
 
-        let importRecord = null;
+
+        let importRecord =
+            null;
+
 
         try {
+
             if (!file) {
+
                 throw new Error(
                     "No Excel file received"
                 );
             }
 
+
             /*
-             * Keep cellDates:true because normal
-             * Support Expiry Date values are stored
-             * as MongoDB Date values.
+             * Keep cellDates:true.
+             *
+             * Normal Support Expiry Dates
+             * are stored as MongoDB Date values.
              */
             const workbook =
                 XLSX.read(
                     file.buffer,
                     {
-                        type: "buffer",
-                        cellDates: true
+                        type:
+                            "buffer",
+
+                        cellDates:
+                            true
                     }
                 );
 
+
             importRecord =
                 await Import.create({
+
                     fileName:
                         file.originalname ||
                         "uploaded.xlsx",
@@ -1175,9 +1869,15 @@ export const importExcelFile =
                         new Date()
                 });
 
+
+            /* =================================================
+               DEMOS → EVAL
+            ================================================= */
+
             /*
-             * Find the Demos sheet from the same
-             * Excel workbook.
+             * Find Demos in the SAME main Excel file.
+             *
+             * No separate EVAL upload is required.
              */
             const demosSheetName =
                 workbook.SheetNames.find(
@@ -1187,12 +1887,7 @@ export const importExcelFile =
                         ) === "demos"
                 );
 
-            /*
-             * Import Demos into EvalValue.
-             *
-             * Demos does NOT become a normal
-             * Customer / PO / NetworkUnit record.
-             */
+
             const evalResult =
                 demosSheetName
                     ? await importDemosSheet(
@@ -1207,27 +1902,36 @@ export const importExcelFile =
                         skipped: 0
                     };
 
-            /*
-             * Process all normal worksheets.
-             *
-             * Demos has already been processed
-             * separately above.
-             */
+
+            /* =================================================
+               NORMAL SHEETS
+            ================================================= */
+
             for (
                 const sheetName
                 of workbook.SheetNames
             ) {
+
                 const normalizedSheet =
                     normalizeKey(
                         sheetName
                     );
 
+
+                /*
+                 * Demos has already been processed
+                 * into EvalValue.
+                 *
+                 * Do NOT create a Customer called Demos.
+                 */
                 if (
                     normalizedSheet ===
                     "demos"
                 ) {
+
                     continue;
                 }
+
 
                 await processStandardSheet(
                     workbook,
@@ -1236,32 +1940,46 @@ export const importExcelFile =
                 );
             }
 
-            /*
-             * Final dashboard counts.
-             */
+
+            /* =================================================
+               FINAL COUNTS
+            ================================================= */
+
             const totalCustomers =
                 await Customer.countDocuments();
+
 
             const totalPurchaseOrders =
                 await PurchaseOrder.countDocuments();
 
+
             const totalUnits =
                 await NetworkUnit.countDocuments();
 
-            /*
-             * Import history.
-             */
+
+            /* =================================================
+               SHEET RESULTS
+            ================================================= */
+
             const sheetResults =
                 workbook.SheetNames.map(
-                    (sheetName) => {
+                    (
+                        sheetName
+                    ) => {
+
                         const isDemos =
                             normalizeKey(
                                 sheetName
                             ) === "demos";
 
+
                         return {
+
                             sheetName,
 
+                            /*
+                             * CMIN will appear as Comcast.
+                             */
                             customerName:
                                 normalizeCustomerName(
                                     sheetName
@@ -1281,24 +1999,40 @@ export const importExcelFile =
                     }
                 );
 
+
+            /* =================================================
+               SAVE IMPORT RESULT
+            ================================================= */
+
             importRecord.status =
                 "completed";
+
 
             importRecord.totalCustomers =
                 totalCustomers;
 
+
             importRecord.totalPurchaseOrders =
                 totalPurchaseOrders;
+
 
             importRecord.totalUnits =
                 totalUnits;
 
+
             importRecord.sheetResults =
                 sheetResults;
 
+
             await importRecord.save();
 
+
+            /* =================================================
+               RETURN RESULT
+            ================================================= */
+
             return {
+
                 message:
                     "Excel imported successfully",
 
@@ -1321,21 +2055,28 @@ export const importExcelFile =
                     workbook.SheetNames
             };
 
+
         } catch (error) {
+
             console.error(
                 "Excel import error:",
                 error
             );
 
+
             if (importRecord) {
+
                 importRecord.status =
                     "failed";
+
 
                 importRecord.errorMessage =
                     error.message;
 
+
                 await importRecord.save();
             }
+
 
             throw error;
         }
