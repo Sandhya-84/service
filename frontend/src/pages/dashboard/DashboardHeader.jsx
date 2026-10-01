@@ -1,3 +1,4 @@
+
 import React, {
     useEffect,
     useState
@@ -8,80 +9,60 @@ import {
     useNavigate
 } from "react-router-dom";
 
+import {
+    LayoutDashboard,
+    Building2,
+    UserPlus,
+    FilePlus,
+    Upload,
+    Square,
+    ArrowUpDown,
+    Activity,
+    Sun,
+    Moon,
+    LogOut
+} from "lucide-react";
+
 import { useTheme } from "../../context/ThemeContext";
 
+const DashboardHeader = ({ onLogout }) => {
 
-const DashboardHeader = ({
-    onLogout
-}) => {
-
-    const navigate =
-        useNavigate();
-
-    const location =
-        useLocation();
+    const navigate = useNavigate();
+    const location = useLocation();
 
     const {
         darkMode,
         toggleDarkMode
     } = useTheme();
 
-
-    const [userName, setUserName] =
-        useState("User");
-
+    const [userName, setUserName] = useState("User");
 
     useEffect(() => {
 
         try {
 
             const savedUser =
-                localStorage.getItem(
-                    "user"
-                );
+                localStorage.getItem("user");
 
             const savedUserName =
-                localStorage.getItem(
-                    "userName"
-                );
-
+                localStorage.getItem("userName");
 
             if (savedUserName) {
-
-                setUserName(
-                    savedUserName
-                );
-
+                setUserName(savedUserName);
                 return;
             }
 
-
             if (savedUser) {
 
-                const parsedUser =
-                    JSON.parse(
-                        savedUser
-                    );
-
+                const parsedUser = JSON.parse(savedUser);
 
                 if (parsedUser?.name) {
-
-                    setUserName(
-                        parsedUser.name
-                    );
-
+                    setUserName(parsedUser.name);
                     return;
                 }
 
-
-                if (
-                    parsedUser?.user?.name
-                ) {
-
-                    setUserName(
-                        parsedUser.user.name
-                    );
-
+                if (parsedUser?.user?.name) {
+                    setUserName(parsedUser.user.name);
                     return;
                 }
 
@@ -99,59 +80,54 @@ const DashboardHeader = ({
     }, []);
 
 
-    const isActive = (
-        path
-    ) => {
-
-        return (
-            location.pathname === path
-        );
-
-    };
-
-
     const menuItems = [
 
         {
             label: "Dashboard",
             path: "/dashboard",
-            icon: "⌂"
+            icon: LayoutDashboard
+        },
+
+        {
+            label: "Customer Directory",
+            path: "/customers",
+            icon: Building2
         },
 
         {
             label: "Add Customer",
             path: "/add-customer",
-            icon: "+"
+            icon: UserPlus
         },
 
         {
             label: "Add PO",
             path: "/add-purchase-order",
-            icon: "+"
+            icon: FilePlus
         },
 
         {
             label: "Import Excel",
             path: "/import-excel",
-            icon: "↑"
+            icon: Upload
         },
 
         {
             label: "EVAL Units",
             path: "/eval",
-            icon: "▣"
+            icon: Square
         },
 
         {
             label: "Import History",
             path: "/import-history",
-            icon: "↕"
+            icon: ArrowUpDown
         },
 
         {
             label: "Recent Activity",
             path: "/recent-activity",
-            icon: "◉"
+            icon: Activity
         }
 
     ];
@@ -161,9 +137,7 @@ const DashboardHeader = ({
 
         <>
 
-            {/* =================================================
-                TOP HEADER
-            ================================================= */}
+            {/* TOP HEADER */}
 
             <header
                 className={`
@@ -206,10 +180,6 @@ const DashboardHeader = ({
                         "
                     >
 
-                        {/* =================================================
-                            TITLE
-                        ================================================= */}
-
                         <div>
 
                             <h1
@@ -226,7 +196,6 @@ const DashboardHeader = ({
                             >
                                 Support Tracking System
                             </h1>
-
 
                             <p
                                 className={`
@@ -246,17 +215,9 @@ const DashboardHeader = ({
                         </div>
 
 
-                        {/* =================================================
-                            USER
-                        ================================================= */}
+                        {/* USER */}
 
-                        <div
-                            className="
-                                flex
-                                items-center
-                                gap-5
-                            "
-                        >
+                        <div className="flex items-center gap-5">
 
                             <div
                                 className={`
@@ -275,11 +236,8 @@ const DashboardHeader = ({
                                     }
                                 `}
                             >
-                                {userName
-                                    .charAt(0)
-                                    .toUpperCase()}
+                                {userName.charAt(0).toUpperCase()}
                             </div>
-
 
                             <div>
 
@@ -298,22 +256,6 @@ const DashboardHeader = ({
                                     {userName}
                                 </p>
 
-
-                                <p
-                                    className={`
-                                        mt-0.5
-                                        text-xs
-                                        font-medium
-                                        leading-tight
-                                        ${
-                                            darkMode
-                                                ? "text-slate-400"
-                                                : "text-slate-500"
-                                        }
-                                    `}
-                                >
-                                </p>
-
                             </div>
 
                         </div>
@@ -325,9 +267,7 @@ const DashboardHeader = ({
             </header>
 
 
-            {/* =================================================
-                SIDEBAR
-            ================================================= */}
+            {/* SIDEBAR */}
 
             <aside
                 className={`
@@ -348,14 +288,7 @@ const DashboardHeader = ({
                 `}
             >
 
-                <nav
-                    className="
-                        flex-1
-                        overflow-y-auto
-                        px-4
-                        py-6
-                    "
-                >
+                <nav className="flex-1 overflow-y-auto px-4 py-6">
 
                     <p
                         className={`
@@ -375,103 +308,67 @@ const DashboardHeader = ({
                         Navigation
                     </p>
 
+                    <div className="space-y-2">
 
-                    <div
-                        className="
-                            space-y-2
-                        "
-                    >
+                        {menuItems.map((item) => {
 
-                        {menuItems.map(
-                            (item) => {
+                            const active =
+                                location.pathname === item.path;
 
-                                const active =
-                                    isActive(
-                                        item.path
-                                    );
+                            const Icon = item.icon;
 
+                            return (
 
-                                return (
-
-                                    <button
-                                        key={
-                                            item.path
+                                <button
+                                    key={item.path}
+                                    type="button"
+                                    onClick={() => navigate(item.path)}
+                                    className={`
+                                        flex
+                                        w-full
+                                        items-center
+                                        gap-4
+                                        rounded-xl
+                                        px-4
+                                        py-3
+                                        text-left
+                                        text-base
+                                        font-medium
+                                        transition-all
+                                        ${
+                                            active
+                                                ? darkMode
+                                                    ? "bg-emerald-500/15 text-emerald-400"
+                                                    : "bg-emerald-50 text-emerald-700"
+                                                : darkMode
+                                                    ? "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+                                                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                                         }
-                                        type="button"
-                                        onClick={() =>
-                                            navigate(
-                                                item.path
-                                            )
-                                        }
-                                        className={`
-                                            flex
-                                            w-full
-                                            items-center
-                                            gap-4
-                                            rounded-xl
-                                            px-4
-                                            py-3
-                                            text-left
-                                            text-lg
-                                            font-medium
-                                            transition-all
-                                            ${
-                                                active
-                                                    ? darkMode
-                                                        ? "bg-emerald-500/15 text-emerald-400"
-                                                        : "bg-emerald-50 text-emerald-700"
-                                                    : darkMode
-                                                        ? "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
-                                                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                                            }
-                                        `}
-                                    >
+                                    `}
+                                >
 
-                                        <span
-                                            className={`
-                                                flex
-                                                h-6
-                                                w-6
-                                                shrink-0
-                                                items-center
-                                                justify-center
-                                                text-lg
-                                                ${
-                                                    active
-                                                        ? darkMode
-                                                            ? "text-emerald-400"
-                                                            : "text-emerald-600"
-                                                        : ""
-                                                }
-                                            `}
-                                        >
-                                            {
-                                                item.icon
-                                            }
-                                        </span>
+                                    <Icon
+                                        size={20}
+                                        strokeWidth={1.8}
+                                        className="shrink-0"
+                                    />
 
+                                    <span className="whitespace-nowrap">
+                                        {item.label}
+                                    </span>
 
-                                        <span>
-                                            {
-                                                item.label
-                                            }
-                                        </span>
+                                </button>
 
-                                    </button>
+                            );
 
-                                );
-
-                            }
-                        )}
+                        })}
 
                     </div>
 
                 </nav>
 
 
-                {/* =================================================
-                    BOTTOM MENU
-                ================================================= */}
+                {/* BOTTOM MENU */}
 
                 <div
                     className={`
@@ -490,9 +387,7 @@ const DashboardHeader = ({
 
                     <button
                         type="button"
-                        onClick={
-                            toggleDarkMode
-                        }
+                        onClick={toggleDarkMode}
                         className={`
                             mb-2
                             flex
@@ -514,26 +409,13 @@ const DashboardHeader = ({
                         `}
                     >
 
-                        <span
-                            className="
-                                flex
-                                h-6
-                                w-6
-                                items-center
-                                justify-center
-                                text-lg
-                            "
-                        >
-                            {darkMode
-                                ? "☀"
-                                : "☾"}
-                        </span>
-
+                        {darkMode
+                            ? <Sun size={20} />
+                            : <Moon size={20} />
+                        }
 
                         <span>
-                            {darkMode
-                                ? "Light Mode"
-                                : "Dark Mode"}
+                            {darkMode ? "Light Mode" : "Dark Mode"}
                         </span>
 
                     </button>
@@ -543,9 +425,7 @@ const DashboardHeader = ({
 
                     <button
                         type="button"
-                        onClick={
-                            onLogout
-                        }
+                        onClick={onLogout}
                         className={`
                             flex
                             w-full
@@ -566,23 +446,9 @@ const DashboardHeader = ({
                         `}
                     >
 
-                        <span
-                            className="
-                                flex
-                                h-6
-                                w-6
-                                items-center
-                                justify-center
-                                text-lg
-                            "
-                        >
-                            ↪
-                        </span>
+                        <LogOut size={20} />
 
-
-                        <span>
-                            Logout
-                        </span>
+                        <span>Logout</span>
 
                     </button>
 
@@ -595,6 +461,5 @@ const DashboardHeader = ({
     );
 
 };
-
 
 export default DashboardHeader;

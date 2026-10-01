@@ -26,7 +26,7 @@ import EvalPage from "./pages/eval/EvalPage";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 import DashboardLayout from "./pages/dashboard/DashboardLayout";
-
+import CustomerDirectory from "./pages/customer/CustomerDirectory";
 
 const App = () => {
 
@@ -211,6 +211,16 @@ const App = () => {
                         </ProtectedRoute>
                     }
                 />
+                <Route
+    path="/customers"
+    element={
+        <ProtectedRoute>
+            <DashboardLayout>
+                <CustomerDirectory />
+            </DashboardLayout>
+        </ProtectedRoute>
+    }
+/>
 
             </Routes>
 
