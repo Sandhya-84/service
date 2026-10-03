@@ -1,4 +1,3 @@
-
 import React, {
     useEffect,
     useState
@@ -6,11 +5,14 @@ import React, {
 
 import StatCards from "./StatCards";
 import StatusChart from "./StatusChart";
+import UnitExpiryChart from "./UnitExpiryChart";
+import UnitCountChart from "./UnitCountChart";
 
 import { useTheme } from "../../context/ThemeContext";
 
 import {
-    getDashboardSummary
+    getDashboardSummary,
+    getDashboardData
 } from "../../api/dashboardApi";
 
 const Dashboard = () => {
@@ -26,11 +28,20 @@ const Dashboard = () => {
         expired: 0,
         noExpiryDate: 0
     });
+    
+    const [customers, setCustomers] = useState([]);
 
     const [loading, setLoading] = useState(true);
 
     const [error, setError] = useState("");
-
+    useEffect(() => {
+    if (customers.length > 0) {
+        console.log(
+            "Sample Unit:",
+            customers[0]?.purchaseOrders?.[0]?.units?.[0]
+        );
+    }
+}, [customers]);
     useEffect(() => {
 
         const loadDashboard = async () => {
@@ -40,11 +51,20 @@ const Dashboard = () => {
                 setLoading(true);
                 setError("");
 
-                const response =
-                    await getDashboardSummary();
+                const [
+                    summaryResponse,
+                    dataResponse
+                ] = await Promise.all([
+                    getDashboardSummary(),
+                    getDashboardData()
+                ]);
 
                 setSummary(
-                    response.summary || response
+                    summaryResponse.summary || summaryResponse
+                );
+
+                setCustomers(
+                    dataResponse.data || []
                 );
 
             } catch (err) {
@@ -120,8 +140,21 @@ const Dashboard = () => {
                 darkMode={darkMode}
             />
 
+            {/* Existing donut chart - unchanged */}
             <StatusChart
                 summary={summary}
+                darkMode={darkMode}
+            />
+
+            {/* Graph 2 */}
+            <UnitExpiryChart
+                customers={customers}
+                darkMode={darkMode}
+            />
+
+            {/* Graph 3 */}
+            <UnitCountChart
+                customers={customers}
                 darkMode={darkMode}
             />
 
