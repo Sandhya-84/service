@@ -1,48 +1,31 @@
 import express from "express";
 
 import {
-    createPurchaseOrder,
-    getPurchaseOrders,
-    updatePurchaseOrder
+  createPurchaseOrder,
+  getPurchaseOrders,
+  updatePurchaseOrder,
 } from "../controllers/purchaseOrderController.js";
+
+import {
+  updateNetworkUnits,
+} from "../controllers/networkUnitController.js";
 
 import authMiddleware from "../middleware/authMiddleware.js";
 
-
 const router = express.Router();
 
+// Purchase Orders
+router.get("/", authMiddleware, getPurchaseOrders);
 
-// =====================================================
-// GET PURCHASE ORDERS
-// =====================================================
+router.post("/", authMiddleware, createPurchaseOrder);
 
-router.get(
-    "/",
-    authMiddleware,
-    getPurchaseOrders
-);
+router.put("/:id", authMiddleware, updatePurchaseOrder);
 
-
-// =====================================================
-// CREATE PURCHASE ORDER
-// =====================================================
-
-router.post(
-    "/",
-    authMiddleware,
-    createPurchaseOrder
-);
-
-
-// =====================================================
-// UPDATE PURCHASE ORDER
-// =====================================================
-
+// Network Units belonging to a Purchase Order
 router.put(
-    "/:id",
-    authMiddleware,
-    updatePurchaseOrder
+  "/:purchaseOrderId/units",
+  authMiddleware,
+  updateNetworkUnits
 );
-
 
 export default router;

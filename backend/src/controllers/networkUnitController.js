@@ -1,619 +1,90 @@
 import NetworkUnit from "../models/NetworkUnit.js";
 import PurchaseOrder from "../models/PurchaseOrder.js";
-import Customer from "../models/Customer.js";
 
+export const updateNetworkUnits = async (req, res) => {
+  try {
+    const { purchaseOrderId } = req.params;
+    const { units } = req.body;
 
-/* =========================================================
-   CREATE NETWORK UNIT
-========================================================= */
+    // Validate purchase order
+    const purchaseOrder = await PurchaseOrder.findById(purchaseOrderId);
 
-export const createNetworkUnit = async (
-    req,
-    res
-) => {
-    try {
-        const {
-            customerId,
-            purchaseOrderId,
-            unitCode,
-            hostname,
-            radioConfiguration,
-            additionalFields
-        } = req.body;
-
-
-        if (!customerId) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Customer is required"
-            });
-        }
-
-
-        if (!unitCode) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Unit code is required"
-            });
-        }
-
-
-        const customer =
-            await Customer.findById(
-                customerId
-            );
-
-
-        if (!customer) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Customer not found"
-            });
-        }
-
-
-        let finalPurchaseOrderId =
-            purchaseOrderId || null;
-
-
-        if (finalPurchaseOrderId) {
-            const purchaseOrder =
-                await PurchaseOrder.findById(
-                    finalPurchaseOrderId
-                );
-
-
-            if (!purchaseOrder) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Purchase order not found"
-                });
-            }
-
-
-            if (
-                purchaseOrder.customerId.toString() !==
-                customerId.toString()
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Purchase order does not belong to this customer"
-                });
-            }
-        }
-
-
-        const existingUnit =
-            await NetworkUnit.findOne({
-                customerId,
-                purchaseOrderId:
-                    finalPurchaseOrderId,
-                unitCode:
-                    unitCode.trim(),
-                hostname:
-                    hostname
-                        ? hostname.trim()
-                        : ""
-            });
-
-
-        if (existingUnit) {
-            return res.status(409).json({
-                success: false,
-                message:
-                    "Network unit already exists"
-            });
-        }
-
-
-        const networkUnit =
-            await NetworkUnit.create({
-                customerId,
-
-                purchaseOrderId:
-                    finalPurchaseOrderId,
-
-                unitCode:
-                    unitCode.trim(),
-
-                hostname:
-                    hostname
-                        ? hostname.trim()
-                        : "",
-
-                radioConfiguration:
-                    radioConfiguration
-                        ? radioConfiguration.trim()
-                        : "",
-
-                additionalFields:
-                    additionalFields || {}
-            });
-
-
-        return res.status(201).json({
-            success: true,
-            message:
-                "Network unit created successfully",
-            data: networkUnit
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Error creating network unit:",
-            error
-        );
-
-        return res.status(500).json({
-            success: false,
-            message:
-                "Failed to create network unit",
-            error:
-                error.message
-        });
+    if (!purchaseOrder) {
+      return res.status(404).json({
+        message: "Purchase order not found",
+      });
     }
-};
 
-
-/* =========================================================
-   GET ALL NETWORK UNITS
-========================================================= */
-
-export const getNetworkUnits = async (
-    req,
-    res
-) => {
-    try {
-
-        const units =
-            await NetworkUnit.find()
-                .populate("customerId")
-                .populate("purchaseOrderId")
-                .sort({
-                    createdAt:
-                        -1
-                });
-
-
-        return res.status(200).json({
-            success: true,
-            count:
-                units.length,
-            data:
-                units
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Error fetching network units:",
-            error
-        );
-
-        return res.status(500).json({
-            success: false,
-            message:
-                "Failed to fetch network units",
-            error:
-                error.message
-        });
+    // Validate units array
+    if (!Array.isArray(units) || units.length === 0) {
+      return res.status(400).json({
+        message: "Please provide at least one unit to update",
+      });
     }
-};
 
+    // Make sure every unit belongs to this purchase order
+    const unitIds = units.map((unit) => unit._id);
 
-/* =========================================================
-   GET NETWORK UNIT BY ID
-========================================================= */
+    const existingUnits = await NetworkUnit.find({
+      _id: { $in: unitIds },
+      purchaseOrderId,
+    });
 
-export const getNetworkUnitById = async (
-    req,
-    res
-) => {
-    try {
-
-        const unit =
-            await NetworkUnit.findById(
-                req.params.id
-            )
-                .populate("customerId")
-                .populate("purchaseOrderId");
-
-
-        if (!unit) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Network unit not found"
-            });
-        }
-
-
-        return res.status(200).json({
-            success: true,
-            data:
-                unit
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Error fetching network unit:",
-            error
-        );
-
-        return res.status(500).json({
-            success: false,
-            message:
-                "Failed to fetch network unit",
-            error:
-                error.message
-        });
+    if (existingUnits.length !== units.length) {
+      return res.status(400).json({
+        message: "One or more selected units do not belong to this purchase order",
+      });
     }
-};
 
+    // Update each selected unit
+    for (const unit of units) {
+      const updateData = {};
 
-/* =========================================================
-   GET UNITS BY PURCHASE ORDER
-========================================================= */
+      if (unit.unitCode !== undefined) {
+        updateData.unitCode = String(unit.unitCode).trim();
+      }
 
-export const getUnitsByPurchaseOrder =
-    async (
-        req,
-        res
-    ) => {
+      if (unit.hostname !== undefined) {
+        updateData.hostname = String(unit.hostname).trim();
+      }
 
-        try {
+      if (unit.radioConfiguration !== undefined) {
+        updateData.radioConfiguration =
+          String(unit.radioConfiguration).trim();
+      }
 
-            const {
-                purchaseOrderId
-            } = req.params;
-
-
-            const purchaseOrder =
-                await PurchaseOrder.findById(
-                    purchaseOrderId
-                );
-
-
-            if (!purchaseOrder) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Purchase order not found"
-                });
-            }
-
-
-            const units =
-                await NetworkUnit.find({
-                    purchaseOrderId
-                })
-                    .populate("customerId")
-                    .sort({
-                        createdAt:
-                            -1
-                    });
-
-
-            return res.status(200).json({
-                success: true,
-                count:
-                    units.length,
-                data:
-                    units
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Error fetching units by purchase order:",
-                error
-            );
-
-            return res.status(500).json({
-                success: false,
-                message:
-                    "Failed to fetch units for purchase order",
-                error:
-                    error.message
-            });
+      await NetworkUnit.findOneAndUpdate(
+        {
+          _id: unit._id,
+          purchaseOrderId,
+        },
+        {
+          $set: updateData,
+        },
+        {
+          new: true,
+          runValidators: true,
         }
-    };
-
-
-/* =========================================================
-   GET UNITS BY CUSTOMER
-========================================================= */
-
-export const getUnitsByCustomer =
-    async (
-        req,
-        res
-    ) => {
-
-        try {
-
-            const {
-                customerId
-            } = req.params;
-
-
-            const customer =
-                await Customer.findById(
-                    customerId
-                );
-
-
-            if (!customer) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Customer not found"
-                });
-            }
-
-
-            const units =
-                await NetworkUnit.find({
-                    customerId
-                })
-                    .populate("purchaseOrderId")
-                    .sort({
-                        createdAt:
-                            -1
-                    });
-
-
-            return res.status(200).json({
-                success: true,
-                count:
-                    units.length,
-                data:
-                    units
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Error fetching units by customer:",
-                error
-            );
-
-            return res.status(500).json({
-                success: false,
-                message:
-                    "Failed to fetch units for customer",
-                error:
-                    error.message
-            });
-        }
-    };
-
-
-/* =========================================================
-   UPDATE NETWORK UNIT
-========================================================= */
-
-export const updateNetworkUnit = async (
-    req,
-    res
-) => {
-
-    try {
-
-        const {
-            customerId,
-            purchaseOrderId,
-            unitCode,
-            hostname,
-            radioConfiguration,
-            additionalFields
-        } = req.body;
-
-
-        const unit =
-            await NetworkUnit.findById(
-                req.params.id
-            );
-
-
-        if (!unit) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Network unit not found"
-            });
-        }
-
-
-        if (customerId !== undefined) {
-
-            const customer =
-                await Customer.findById(
-                    customerId
-                );
-
-
-            if (!customer) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Customer not found"
-                });
-            }
-
-
-            unit.customerId =
-                customerId;
-        }
-
-
-        if (
-            purchaseOrderId !==
-            undefined
-        ) {
-
-            if (purchaseOrderId) {
-
-                const purchaseOrder =
-                    await PurchaseOrder.findById(
-                        purchaseOrderId
-                    );
-
-
-                if (!purchaseOrder) {
-                    return res.status(404).json({
-                        success: false,
-                        message:
-                            "Purchase order not found"
-                    });
-                }
-
-
-                if (
-                    purchaseOrder.customerId.toString() !==
-                    unit.customerId.toString()
-                ) {
-                    return res.status(400).json({
-                        success: false,
-                        message:
-                            "Purchase order does not belong to this customer"
-                    });
-                }
-
-
-                unit.purchaseOrderId =
-                    purchaseOrderId;
-
-            } else {
-
-                /*
-                 * Allows a unit to become
-                 * standalone without a PO.
-                 */
-                unit.purchaseOrderId =
-                    null;
-            }
-        }
-
-
-        if (
-            unitCode !==
-            undefined
-        ) {
-            unit.unitCode =
-                unitCode.trim();
-        }
-
-
-        if (
-            hostname !==
-            undefined
-        ) {
-            unit.hostname =
-                hostname.trim();
-        }
-
-
-        if (
-            radioConfiguration !==
-            undefined
-        ) {
-            unit.radioConfiguration =
-                radioConfiguration.trim();
-        }
-
-
-        if (
-            additionalFields !==
-            undefined
-        ) {
-            unit.additionalFields =
-                additionalFields;
-        }
-
-
-        await unit.save();
-
-
-        return res.status(200).json({
-            success: true,
-            message:
-                "Network unit updated successfully",
-            data:
-                unit
-        });
-
-    } catch (error) {
-
-        console.error(
-            "Error updating network unit:",
-            error
-        );
-
-        return res.status(500).json({
-            success: false,
-            message:
-                "Failed to update network unit",
-            error:
-                error.message
-        });
+      );
     }
+
+    // Get updated units
+    const updatedUnits = await NetworkUnit.find({
+      purchaseOrderId,
+    }).sort({
+      createdAt: 1,
+    });
+
+    return res.status(200).json({
+      message: "Network units updated successfully",
+      units: updatedUnits,
+    });
+  } catch (error) {
+    console.error("Update network units error:", error);
+
+    return res.status(500).json({
+      message: "Failed to update network units",
+      error: error.message,
+    });
+  }
 };
-
-
-/* =========================================================
-   DELETE NETWORK UNIT
-========================================================= */
-
-export const deleteNetworkUnit =
-    async (
-        req,
-        res
-    ) => {
-
-        try {
-
-            const unit =
-                await NetworkUnit.findByIdAndDelete(
-                    req.params.id
-                );
-
-
-            if (!unit) {
-                return res.status(404).json({
-                    success: false,
-                    message:
-                        "Network unit not found"
-                });
-            }
-
-
-            return res.status(200).json({
-                success: true,
-                message:
-                    "Network unit deleted successfully"
-            });
-
-        } catch (error) {
-
-            console.error(
-                "Error deleting network unit:",
-                error
-            );
-
-            return res.status(500).json({
-                success: false,
-                message:
-                    "Failed to delete network unit",
-                error:
-                    error.message
-            });
-        }
-    };
