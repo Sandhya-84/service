@@ -1,280 +1,808 @@
 import React, { useEffect, useState } from "react";
-import { Edit3, X, Save } from "lucide-react";
-import { updateNetworkUnits } from "../../api/dashboardApi";
+import {
+    Edit3,
+    X,
+    Save,
+    Trash2,
+    AlertTriangle
+} from "lucide-react";
+
+import {
+    updateNetworkUnits
+} from "../../api/dashboardApi";
 
 const NetworkUnitsTable = ({
     units = [],
-    darkMode,
+    darkMode = false,
     purchaseOrderId,
-    onUnitsUpdated,
+    onUnitsUpdated
 }) => {
-    const [selectedUnits, setSelectedUnits] = useState([]);
-    const [editOpen, setEditOpen] = useState(false);
-    const [editingUnits, setEditingUnits] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
+
+    const [safeUnits, setSafeUnits] = useState(
+        Array.isArray(units) ? units : []
+    );
+
+    const [selectedIds, setSelectedIds] = useState([]);
+
+    const [editing, setEditing] = useState(false);
+
+    const [editUnits, setEditUnits] = useState([]);
+
+    const [saving, setSaving] = useState(false);
+
+    const [deletingId, setDeletingId] = useState(null);
+
+    /*
+    |--------------------------------------------------------------------------
+    | CUSTOM DELETE MODAL
+    |--------------------------------------------------------------------------
+    */
+
+    const [deleteModal, setDeleteModal] = useState({
+        open: false,
+        unit: null
+    });
+
 
     useEffect(() => {
-        const existingIds = new Set(
-            units.map((unit) => String(unit._id))
+
+        setSafeUnits(
+            Array.isArray(units)
+                ? units
+                : []
         );
 
-        setSelectedUnits((previous) =>
-            previous.filter((id) =>
-                existingIds.has(String(id))
-            )
-        );
     }, [units]);
 
-    const toggleUnit = (unitId) => {
-        const id = String(unitId);
 
-        setSelectedUnits((previous) => {
+    /*
+    |--------------------------------------------------------------------------
+    | SELECT / UNSELECT
+    |--------------------------------------------------------------------------
+    */
+
+    const toggleSelection = (id) => {
+
+        setSelectedIds((previous) => {
+
             if (previous.includes(id)) {
+
                 return previous.filter(
-                    (selectedId) => selectedId !== id
+                    (item) => item !== id
                 );
+
             }
 
-            return [...previous, id];
+            return [
+                ...previous,
+                id
+            ];
+
         });
+
     };
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SELECT ALL
+    |--------------------------------------------------------------------------
+    */
 
     const toggleSelectAll = () => {
-        if (selectedUnits.length === units.length) {
-            setSelectedUnits([]);
-            return;
+
+        if (
+            selectedIds.length ===
+            safeUnits.length
+        ) {
+
+            setSelectedIds([]);
+
+        } else {
+
+            setSelectedIds(
+                safeUnits.map(
+                    (unit) => unit._id
+                )
+            );
+
         }
 
-        setSelectedUnits(
-            units.map((unit) => String(unit._id))
-        );
     };
 
-    const openEditModal = () => {
-        if (selectedUnits.length === 0) {
-            setError("Please select at least one unit.");
-            return;
-        }
 
-        setError("");
-        setSuccess("");
+    /*
+    |--------------------------------------------------------------------------
+    | START EDIT
+    |--------------------------------------------------------------------------
+    */
 
-        const selected = units
-            .filter((unit) =>
-                selectedUnits.includes(String(unit._id))
+    const startEditing = () => {
+
+        const selectedUnits =
+            safeUnits.filter(
+                (unit) =>
+                    selectedIds.includes(
+                        unit._id
+                    )
+            );
+
+        setEditUnits(
+            selectedUnits.map(
+                (unit) => ({
+                    ...unit
+                })
             )
-            .map((unit) => ({
-                _id: unit._id,
-                unitCode: unit.unitCode || "",
-                hostname: unit.hostname || "",
-                radioConfiguration:
-                    unit.radioConfiguration || "",
-            }));
+        );
 
-        setEditingUnits(selected);
-        setEditOpen(true);
+        setEditing(true);
+
     };
 
-    const closeEditModal = () => {
-        if (loading) return;
 
-        setEditOpen(false);
-        setEditingUnits([]);
-        setError("");
+    /*
+    |--------------------------------------------------------------------------
+    | CANCEL EDIT
+    |--------------------------------------------------------------------------
+    */
+
+    const cancelEditing = () => {
+
+        setEditing(false);
+
+        setEditUnits([]);
+
     };
 
-    const handleFieldChange = (
-        index,
+
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE EDIT FIELD
+    |--------------------------------------------------------------------------
+    */
+
+    const updateEditField = (
+        id,
         field,
         value
     ) => {
-        setEditingUnits((previous) =>
-            previous.map((unit, unitIndex) =>
-                unitIndex === index
-                    ? {
-                          ...unit,
-                          [field]: value,
-                      }
-                    : unit
-            )
+
+        setEditUnits(
+            (previous) =>
+                previous.map(
+                    (unit) =>
+                        unit._id === id
+                            ? {
+                                ...unit,
+                                [field]:
+                                    value
+                            }
+                            : unit
+                )
         );
+
     };
 
-    const handleSave = async () => {
-        if (!purchaseOrderId) {
-            setError("Purchase order ID is missing.");
-            return;
-        }
 
-        if (editingUnits.length === 0) {
-            setError("Please select at least one unit.");
-            return;
-        }
+    /*
+    |--------------------------------------------------------------------------
+    | SAVE EDIT
+    |--------------------------------------------------------------------------
+    */
 
-        for (const unit of editingUnits) {
-            if (!unit.unitCode.trim()) {
-                setError(
-                    "Unit Code cannot be empty."
-                );
-                return;
-            }
+    const saveChanges = async () => {
+
+        if (
+            !purchaseOrderId ||
+            editUnits.length === 0
+        ) {
+            return;
         }
 
         try {
-            setLoading(true);
-            setError("");
-            setSuccess("");
+
+            setSaving(true);
 
             const response =
                 await updateNetworkUnits(
                     purchaseOrderId,
-                    editingUnits
+                    editUnits
                 );
 
             const updatedUnits =
-                response?.units || [];
+                response?.units ||
+                response?.networkUnits ||
+                editUnits;
+
+            setSafeUnits(
+                Array.isArray(updatedUnits)
+                    ? updatedUnits
+                    : safeUnits
+            );
+
+            setSelectedIds([]);
+
+            setEditing(false);
+
+            setEditUnits([]);
 
             if (onUnitsUpdated) {
-                onUnitsUpdated(updatedUnits);
+
+                onUnitsUpdated(
+                    updatedUnits
+                );
+
             }
 
-            setSelectedUnits([]);
-            setEditOpen(false);
-            setEditingUnits([]);
+        } catch (error) {
 
-            setSuccess(
-                "Selected network units updated successfully."
-            );
-
-            setTimeout(() => {
-                setSuccess("");
-            }, 3000);
-        } catch (err) {
             console.error(
-                "Update network units error:",
-                err
+                "Failed to update network units:",
+                error
             );
 
-            setError(
-                err?.response?.data?.message ||
-                "Failed to update network units."
+            alert(
+                error?.response?.data?.message ||
+                "Failed to update network units"
             );
+
         } finally {
-            setLoading(false);
+
+            setSaving(false);
+
         }
+
     };
 
-    const inputClass = `
-        w-full
-        rounded-lg
-        border
-        px-3
-        py-2
-        text-sm
-        outline-none
-        transition
-        ${
-            darkMode
-                ? "bg-slate-800 border-slate-600 text-white placeholder-slate-400 focus:border-blue-500"
-                : "bg-white border-slate-300 text-slate-800 placeholder-slate-400 focus:border-blue-500"
+
+    /*
+    |--------------------------------------------------------------------------
+    | OPEN DELETE MODAL
+    |--------------------------------------------------------------------------
+    */
+
+    const openDeleteModal = (unit) => {
+
+        setDeleteModal({
+            open: true,
+            unit
+        });
+
+    };
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | CLOSE DELETE MODAL
+    |--------------------------------------------------------------------------
+    */
+
+    const closeDeleteModal = () => {
+
+        if (deletingId) {
+            return;
         }
-    `;
 
-    return (
-        <div className="w-full">
+        setDeleteModal({
+            open: false,
+            unit: null
+        });
 
-            {/* TOOLBAR */}
+    };
 
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 
-                <div>
-                    <h3
-                        className={`text-base font-semibold ${
-                            darkMode
-                                ? "text-white"
-                                : "text-slate-800"
-                        }`}
-                    >
-                        Network Units
-                    </h3>
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE UNIT
+    |--------------------------------------------------------------------------
+    */
 
-                    <p
-                        className={`mt-1 text-xs ${
-                            darkMode
-                                ? "text-slate-400"
-                                : "text-slate-500"
-                        }`}
-                    >
-                        {units.length} unit
-                        {units.length !== 1 ? "s" : ""} available
-                    </p>
-                </div>
+    const deleteUnit = async () => {
 
-                <button
-                    type="button"
-                    onClick={openEditModal}
-                    disabled={
-                        selectedUnits.length === 0 ||
-                        loading
+        const unit =
+            deleteModal.unit;
+
+        if (!unit?._id) {
+            return;
+        }
+
+        try {
+
+            setDeletingId(
+                unit._id
+            );
+
+            const token =
+                localStorage.getItem(
+                    "token"
+                );
+
+            const response =
+                await fetch(
+                    `http://localhost:5000/api/network-units/${unit._id}`,
+                    {
+                        method: "DELETE",
+                        headers: {
+                            Authorization:
+                                `Bearer ${token}`
+                        }
                     }
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-                        selectedUnits.length === 0 ||
-                        loading
-                            ? darkMode
-                                ? "cursor-not-allowed bg-slate-700 text-slate-500"
-                                : "cursor-not-allowed bg-slate-200 text-slate-400"
-                            : "bg-blue-600 text-white hover:bg-blue-700"
-                    }`}
-                >
-                    <Edit3 size={16} />
+                );
 
-                    Edit Selected
+            const data =
+                await response.json();
 
-                    {selectedUnits.length > 0 &&
-                        ` (${selectedUnits.length})`}
-                </button>
+            if (!response.ok) {
+
+                throw new Error(
+                    data?.message ||
+                    "Failed to delete network unit"
+                );
+
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | REMOVE FROM TABLE
+            |--------------------------------------------------------------------------
+            */
+
+            const updatedUnits =
+                safeUnits.filter(
+                    (item) =>
+                        item._id !==
+                        unit._id
+                );
+
+            setSafeUnits(
+                updatedUnits
+            );
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | REMOVE FROM SELECTION
+            |--------------------------------------------------------------------------
+            */
+
+            setSelectedIds(
+                (previous) =>
+                    previous.filter(
+                        (id) =>
+                            id !== unit._id
+                    )
+            );
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | CLOSE MODAL
+            |--------------------------------------------------------------------------
+            */
+
+            setDeleteModal({
+                open: false,
+                unit: null
+            });
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | INFORM PARENT
+            |--------------------------------------------------------------------------
+            */
+
+            if (onUnitsUpdated) {
+
+                onUnitsUpdated(
+                    updatedUnits
+                );
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Delete unit error:",
+                error
+            );
+
+            alert(
+                error?.message ||
+                "Failed to delete network unit"
+            );
+
+        } finally {
+
+            setDeletingId(null);
+
+        }
+
+    };
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | EMPTY STATE
+    |--------------------------------------------------------------------------
+    */
+
+    if (safeUnits.length === 0) {
+
+        return (
+            <div
+                className={`rounded-lg border p-5 text-center ${
+                    darkMode
+                        ? "border-slate-700 text-slate-400"
+                        : "border-slate-200 text-slate-500"
+                }`}
+            >
+                No network units found.
             </div>
+        );
 
-            {/* SUCCESS */}
+    }
 
-            {success && (
-                <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-3 text-sm text-green-700">
-                    {success}
-                </div>
-            )}
 
-            {/* ERROR */}
+    /*
+    |--------------------------------------------------------------------------
+    | EDIT MODE
+    |--------------------------------------------------------------------------
+    */
 
-            {error && !editOpen && (
-                <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
-                </div>
-            )}
+    if (editing) {
 
-            {/* EMPTY */}
+        return (
+            <div
+                className={`rounded-xl border ${
+                    darkMode
+                        ? "border-slate-700 bg-slate-950"
+                        : "border-slate-200 bg-white"
+                }`}
+            >
 
-            {units.length === 0 ? (
+                {/* EDIT HEADER */}
+
                 <div
-                    className={`rounded-lg border p-6 text-center ${
-                        darkMode
-                            ? "border-slate-700 bg-slate-800 text-slate-400"
-                            : "border-slate-200 bg-slate-50 text-slate-500"
-                    }`}
-                >
-                    No network units found for this purchase
-                    order.
-                </div>
-            ) : (
-                <div
-                    className={`overflow-x-auto rounded-lg border ${
+                    className={`flex items-center justify-between border-b px-4 py-3 ${
                         darkMode
                             ? "border-slate-700"
                             : "border-slate-200"
                     }`}
                 >
-                    <table className="w-full text-sm">
+
+                    <div>
+
+                        <h3
+                            className={
+                                darkMode
+                                    ? "text-sm font-semibold text-white"
+                                    : "text-sm font-semibold text-slate-900"
+                            }
+                        >
+                            Edit Selected Units
+                        </h3>
+
+                        <p
+                            className={
+                                darkMode
+                                    ? "mt-1 text-xs text-slate-400"
+                                    : "mt-1 text-xs text-slate-500"
+                            }
+                        >
+                            {editUnits.length} unit
+                            {editUnits.length !== 1
+                                ? "s"
+                                : ""} selected
+                        </p>
+
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={cancelEditing}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                    >
+                        <X size={18} />
+                    </button>
+
+                </div>
+
+
+                {/* EDIT FIELDS */}
+
+                <div className="space-y-4 p-4">
+
+                    {editUnits.map(
+                        (unit) => (
+
+                            <div
+                                key={unit._id}
+                                className={`rounded-lg border p-4 ${
+                                    darkMode
+                                        ? "border-slate-700 bg-slate-900"
+                                        : "border-slate-200 bg-slate-50"
+                                }`}
+                            >
+
+                                <div
+                                    className={
+                                        darkMode
+                                            ? "mb-3 text-xs font-semibold text-blue-300"
+                                            : "mb-3 text-xs font-semibold text-blue-600"
+                                    }
+                                >
+                                    {unit.unitCode ||
+                                        "Network Unit"}
+                                </div>
+
+
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+
+                                    {/* UNIT CODE */}
+
+                                    <div>
+
+                                        <label
+                                            className={
+                                                darkMode
+                                                    ? "mb-1 block text-xs text-slate-400"
+                                                    : "mb-1 block text-xs text-slate-600"
+                                            }
+                                        >
+                                            Unit Code
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={
+                                                unit.unitCode ||
+                                                ""
+                                            }
+                                            onChange={(event) =>
+                                                updateEditField(
+                                                    unit._id,
+                                                    "unitCode",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className={
+                                                darkMode
+                                                    ? "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                    : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                            }
+                                        />
+
+                                    </div>
+
+
+                                    {/* HOSTNAME */}
+
+                                    <div>
+
+                                        <label
+                                            className={
+                                                darkMode
+                                                    ? "mb-1 block text-xs text-slate-400"
+                                                    : "mb-1 block text-xs text-slate-600"
+                                            }
+                                        >
+                                            Hostname
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={
+                                                unit.hostname ||
+                                                ""
+                                            }
+                                            onChange={(event) =>
+                                                updateEditField(
+                                                    unit._id,
+                                                    "hostname",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className={
+                                                darkMode
+                                                    ? "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                    : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                            }
+                                        />
+
+                                    </div>
+
+
+                                    {/* RADIO CONFIGURATION */}
+
+                                    <div>
+
+                                        <label
+                                            className={
+                                                darkMode
+                                                    ? "mb-1 block text-xs text-slate-400"
+                                                    : "mb-1 block text-xs text-slate-600"
+                                            }
+                                        >
+                                            Radio Configuration
+                                        </label>
+
+                                        <input
+                                            type="text"
+                                            value={
+                                                unit.radioConfiguration ||
+                                                ""
+                                            }
+                                            onChange={(event) =>
+                                                updateEditField(
+                                                    unit._id,
+                                                    "radioConfiguration",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className={
+                                                darkMode
+                                                    ? "w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                    : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500"
+                                            }
+                                        />
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+                        )
+                    )}
+
+                </div>
+
+
+                {/* EDIT ACTIONS */}
+
+                <div
+                    className={`flex justify-end gap-2 border-t px-4 py-3 ${
+                        darkMode
+                            ? "border-slate-700"
+                            : "border-slate-200"
+                    }`}
+                >
+
+                    <button
+                        type="button"
+                        onClick={cancelEditing}
+                        disabled={saving}
+                        className={
+                            darkMode
+                                ? "rounded-lg border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:bg-slate-800"
+                                : "rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                        }
+                    >
+                        Cancel
+                    </button>
+
+
+                    <button
+                        type="button"
+                        onClick={saveChanges}
+                        disabled={
+                            saving ||
+                            editUnits.length === 0
+                        }
+                        className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+
+                        <Save size={16} />
+
+                        {saving
+                            ? "Saving..."
+                            : "Save Changes"}
+
+                    </button>
+
+                </div>
+
+            </div>
+        );
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | NORMAL TABLE
+    |--------------------------------------------------------------------------
+    */
+
+    const allSelected =
+        safeUnits.length > 0 &&
+        selectedIds.length ===
+            safeUnits.length;
+
+
+    return (
+        <>
+            <div
+                className={`rounded-xl border ${
+                    darkMode
+                        ? "border-slate-700 bg-slate-950"
+                        : "border-slate-200 bg-white"
+                }`}
+            >
+
+                {/* HEADER */}
+
+                <div
+                    className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 ${
+                        darkMode
+                            ? "border-slate-700"
+                            : "border-slate-200"
+                    }`}
+                >
+
+                    <div>
+
+                        <h3
+                            className={
+                                darkMode
+                                    ? "text-sm font-semibold text-white"
+                                    : "text-sm font-semibold text-slate-900"
+                            }
+                        >
+                            Network Units
+                        </h3>
+
+                        <p
+                            className={
+                                darkMode
+                                    ? "mt-1 text-xs text-slate-400"
+                                    : "mt-1 text-xs text-slate-500"
+                            }
+                        >
+                            {safeUnits.length} unit
+                            {safeUnits.length !== 1
+                                ? "s"
+                                : ""}
+                        </p>
+
+                    </div>
+
+
+                    {/* EDIT SELECTED */}
+
+                    <button
+                        type="button"
+                        onClick={startEditing}
+                        disabled={
+                            selectedIds.length ===
+                            0
+                        }
+                        className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+
+                        <Edit3 size={16} />
+
+                        Edit Selected
+
+                        {selectedIds.length >
+                            0 && (
+                            <span>
+                                ({selectedIds.length})
+                            </span>
+                        )}
+
+                    </button>
+
+                </div>
+
+
+                {/* TABLE */}
+
+                <div className="overflow-x-auto">
+
+                    <table className="w-full min-w-[900px]">
 
                         <thead
                             className={
@@ -283,417 +811,406 @@ const NetworkUnitsTable = ({
                                     : "bg-slate-50"
                             }
                         >
+
                             <tr>
 
-                                {/* SELECT ALL */}
-
-                                <th className="w-12 px-4 py-3 text-left">
+                                <th className="w-12 px-4 py-3 text-center">
 
                                     <input
                                         type="checkbox"
                                         checked={
-                                            units.length > 0 &&
-                                            selectedUnits.length ===
-                                                units.length
+                                            allSelected
                                         }
                                         onChange={
                                             toggleSelectAll
                                         }
-                                        className="h-4 w-4 cursor-pointer"
+                                        className="h-4 w-4 cursor-pointer accent-blue-600"
                                     />
 
                                 </th>
 
-                                <th
-                                    className={`px-4 py-3 text-left font-semibold ${
-                                        darkMode
-                                            ? "text-slate-200"
-                                            : "text-slate-700"
-                                    }`}
-                                >
-                                    Unit Code
-                                </th>
 
                                 <th
-                                    className={`px-4 py-3 text-left font-semibold ${
+                                    className={
                                         darkMode
-                                            ? "text-slate-200"
-                                            : "text-slate-700"
-                                    }`}
+                                            ? "px-4 py-3 text-left text-sm font-semibold text-slate-300"
+                                            : "px-4 py-3 text-left text-sm font-semibold text-slate-700"
+                                    }
+                                >
+                                    Unit
+                                </th>
+
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-4 py-3 text-left text-sm font-semibold text-slate-300"
+                                            : "px-4 py-3 text-left text-sm font-semibold text-slate-700"
+                                    }
                                 >
                                     Hostname
                                 </th>
 
+
                                 <th
-                                    className={`px-4 py-3 text-left font-semibold ${
+                                    className={
                                         darkMode
-                                            ? "text-slate-200"
-                                            : "text-slate-700"
-                                    }`}
+                                            ? "px-4 py-3 text-left text-sm font-semibold text-slate-300"
+                                            : "px-4 py-3 text-left text-sm font-semibold text-slate-700"
+                                    }
                                 >
                                     Radio Configuration
                                 </th>
 
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-4 py-3 text-center text-sm font-semibold text-slate-300"
+                                            : "px-4 py-3 text-center text-sm font-semibold text-slate-700"
+                                    }
+                                >
+                                    Actions
+                                </th>
+
                             </tr>
+
                         </thead>
+
 
                         <tbody>
 
-                            {units.map((unit) => {
+                            {safeUnits.map(
+                                (unit) => {
 
-                                const unitId =
-                                    String(unit._id);
+                                    const selected =
+                                        selectedIds.includes(
+                                            unit._id
+                                        );
 
-                                const isSelected =
-                                    selectedUnits.includes(
-                                        unitId
+                                    const deleting =
+                                        deletingId ===
+                                        unit._id;
+
+                                    return (
+
+                                        <tr
+                                            key={
+                                                unit._id
+                                            }
+                                            className={
+                                                selected
+                                                    ? darkMode
+                                                        ? "border-t border-slate-700 bg-blue-950/30"
+                                                        : "border-t border-slate-200 bg-blue-50"
+                                                    : darkMode
+                                                        ? "border-t border-slate-700"
+                                                        : "border-t border-slate-200"
+                                            }
+                                        >
+
+                                            {/* CHECKBOX */}
+
+                                            <td className="px-4 py-3 text-center">
+
+                                                <input
+                                                    type="checkbox"
+                                                    checked={
+                                                        selected
+                                                    }
+                                                    onChange={() =>
+                                                        toggleSelection(
+                                                            unit._id
+                                                        )
+                                                    }
+                                                    className="h-4 w-4 cursor-pointer accent-blue-600"
+                                                />
+
+                                            </td>
+
+
+                                            {/* UNIT */}
+
+                                            <td
+                                                className={
+                                                    darkMode
+                                                        ? "px-4 py-3 text-sm font-medium text-white"
+                                                        : "px-4 py-3 text-sm font-medium text-slate-900"
+                                                }
+                                            >
+                                                {unit.unitCode ||
+                                                    "-"}
+                                            </td>
+
+
+                                            {/* HOSTNAME */}
+
+                                            <td
+                                                className={
+                                                    darkMode
+                                                        ? "px-4 py-3 text-sm text-slate-300"
+                                                        : "px-4 py-3 text-sm text-slate-700"
+                                                }
+                                            >
+                                                {unit.hostname ||
+                                                    "-"}
+                                            </td>
+
+
+                                            {/* RADIO */}
+
+                                            <td
+                                                className={
+                                                    darkMode
+                                                        ? "px-4 py-3 text-sm text-slate-300"
+                                                        : "px-4 py-3 text-sm text-slate-700"
+                                                }
+                                            >
+                                                {unit.radioConfiguration ||
+                                                    "-"}
+                                            </td>
+
+
+                                            {/* DELETE */}
+
+                                            <td className="px-4 py-3 text-center">
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openDeleteModal(
+                                                            unit
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        deleting
+                                                    }
+                                                    title="Delete unit"
+                                                    className="inline-flex items-center justify-center rounded-lg p-2 text-red-400 transition hover:bg-red-950 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                                                >
+
+                                                    <Trash2
+                                                        size={17}
+                                                    />
+
+                                                </button>
+
+                                            </td>
+
+                                        </tr>
+
                                     );
 
-                                return (
-                                    <tr
-                                        key={unit._id}
-                                        className={`border-t ${
-                                            darkMode
-                                                ? "border-slate-700"
-                                                : "border-slate-200"
-                                        } ${
-                                            isSelected
-                                                ? darkMode
-                                                    ? "bg-blue-950/40"
-                                                    : "bg-blue-50"
-                                                : darkMode
-                                                    ? "hover:bg-slate-800/70"
-                                                    : "hover:bg-slate-50"
-                                        }`}
-                                    >
-
-                                        {/* CHECKBOX */}
-
-                                        <td className="px-4 py-3">
-
-                                            <input
-                                                type="checkbox"
-                                                checked={
-                                                    isSelected
-                                                }
-                                                onChange={() =>
-                                                    toggleUnit(
-                                                        unit._id
-                                                    )
-                                                }
-                                                className="h-4 w-4 cursor-pointer"
-                                            />
-
-                                        </td>
-
-                                        {/* UNIT CODE */}
-
-                                        <td
-                                            className={`px-4 py-3 font-medium ${
-                                                darkMode
-                                                    ? "text-white"
-                                                    : "text-slate-800"
-                                            }`}
-                                        >
-                                            {unit.unitCode ||
-                                                "-"}
-                                        </td>
-
-                                        {/* HOSTNAME */}
-
-                                        <td
-                                            className={`px-4 py-3 ${
-                                                darkMode
-                                                    ? "text-slate-300"
-                                                    : "text-slate-600"
-                                            }`}
-                                        >
-                                            {unit.hostname ||
-                                                "-"}
-                                        </td>
-
-                                        {/* RADIO */}
-
-                                        <td
-                                            className={`px-4 py-3 ${
-                                                darkMode
-                                                    ? "text-slate-300"
-                                                    : "text-slate-600"
-                                            }`}
-                                        >
-                                            {unit.radioConfiguration ||
-                                                "-"}
-                                        </td>
-
-                                    </tr>
-                                );
-                            })}
+                                }
+                            )}
 
                         </tbody>
+
                     </table>
+
                 </div>
-            )}
 
-            {/* ================================================= */}
-            {/* EDIT SELECTED UNITS MODAL */}
-            {/* ================================================= */}
+            </div>
 
-            {editOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+
+            {/* ========================================================== */}
+            {/* CUSTOM DELETE CONFIRMATION MODAL */}
+            {/* ========================================================== */}
+
+            {deleteModal.open &&
+                deleteModal.unit && (
 
                     <div
-                        className={`max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl shadow-2xl ${
-                            darkMode
-                                ? "bg-slate-900"
-                                : "bg-white"
-                        }`}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+                        onMouseDown={(event) => {
+
+                            if (
+                                event.target ===
+                                event.currentTarget
+                            ) {
+                                closeDeleteModal();
+                            }
+
+                        }}
                     >
 
-                        {/* HEADER */}
-
                         <div
-                            className={`sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 ${
+                            className={`w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl ${
                                 darkMode
                                     ? "border-slate-700 bg-slate-900"
                                     : "border-slate-200 bg-white"
                             }`}
+                            onMouseDown={(event) =>
+                                event.stopPropagation()
+                            }
                         >
 
-                            <div>
+                            {/* MODAL TOP */}
 
-                                <h2
-                                    className={`text-lg font-semibold ${
-                                        darkMode
-                                            ? "text-white"
-                                            : "text-slate-800"
-                                    }`}
-                                >
-                                    Edit Selected Network Units
-                                </h2>
+                            <div className="flex items-start gap-4 px-6 pt-6">
 
-                                <p
-                                    className={`mt-1 text-sm ${
-                                        darkMode
-                                            ? "text-slate-400"
-                                            : "text-slate-500"
-                                    }`}
-                                >
-                                    Editing{" "}
-                                    {editingUnits.length}{" "}
-                                    selected unit
-                                    {editingUnits.length !== 1
-                                        ? "s"
-                                        : ""}
-                                </p>
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-950">
+
+                                    <AlertTriangle
+                                        size={22}
+                                        className="text-red-400"
+                                    />
+
+                                </div>
+
+
+                                <div className="min-w-0 flex-1">
+
+                                    <h2
+                                        className={
+                                            darkMode
+                                                ? "text-lg font-semibold text-white"
+                                                : "text-lg font-semibold text-slate-900"
+                                        }
+                                    >
+                                        Delete Network Unit?
+                                    </h2>
+
+                                    <button
+                                        type="button"
+                                        onClick={
+                                            closeDeleteModal
+                                        }
+                                        disabled={
+                                            Boolean(
+                                                deletingId
+                                            )
+                                        }
+                                        className="absolute mr-6 mt-[-34px] right-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                                    >
+                                        <X size={18} />
+                                    </button>
+
+                                </div>
 
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={closeEditModal}
-                                disabled={loading}
-                                className={`rounded-lg p-2 ${
-                                    darkMode
-                                        ? "text-slate-400 hover:bg-slate-800 hover:text-white"
-                                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                                }`}
-                            >
-                                <X size={20} />
-                            </button>
 
-                        </div>
+                            {/* MESSAGE */}
 
-                        {/* CONTENT */}
+                            <div className="px-6 pb-2 pt-4">
 
-                        <div className="space-y-5 p-6">
+                                <p
+                                    className={
+                                        darkMode
+                                            ? "text-sm leading-6 text-slate-300"
+                                            : "text-sm leading-6 text-slate-600"
+                                    }
+                                >
+                                    Are you sure you want to
+                                    delete this network unit?
+                                    This action cannot be
+                                    undone.
+                                </p>
 
-                            {error && (
-                                <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
-                                    {error}
-                                </div>
-                            )}
 
-                            {editingUnits.map(
-                                (unit, index) => (
-                                    <div
-                                        key={unit._id}
-                                        className={`rounded-xl border p-5 ${
+                                {/* UNIT INFO */}
+
+                                <div
+                                    className={
+                                        darkMode
+                                            ? "mt-4 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3"
+                                            : "mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                                    }
+                                >
+
+                                    <p
+                                        className={
                                             darkMode
-                                                ? "border-slate-700 bg-slate-800/60"
-                                                : "border-slate-200 bg-slate-50"
-                                        }`}
+                                                ? "text-sm font-semibold text-white"
+                                                : "text-sm font-semibold text-slate-900"
+                                        }
                                     >
+                                        {deleteModal.unit.unitCode ||
+                                            "Unknown Unit"}
+                                    </p>
 
-                                        <div className="mb-4 flex items-center justify-between">
+                                    {deleteModal.unit.hostname && (
 
-                                            <h3
-                                                className={`font-semibold ${
-                                                    darkMode
-                                                        ? "text-white"
-                                                        : "text-slate-800"
-                                                }`}
-                                            >
-                                                Unit {index + 1}
-                                            </h3>
+                                        <p
+                                            className={
+                                                darkMode
+                                                    ? "mt-1 text-xs text-slate-400"
+                                                    : "mt-1 text-xs text-slate-500"
+                                            }
+                                        >
+                                            {deleteModal.unit.hostname}
+                                        </p>
 
-                                            <span
-                                                className={`text-xs ${
-                                                    darkMode
-                                                        ? "text-slate-400"
-                                                        : "text-slate-500"
-                                                }`}
-                                            >
-                                                ID: {unit._id}
-                                            </span>
+                                    )}
 
-                                        </div>
+                                </div>
 
-                                        <div className="grid gap-4 md:grid-cols-3">
+                            </div>
 
-                                            <div>
 
-                                                <label
-                                                    className={`mb-1 block text-xs font-medium ${
-                                                        darkMode
-                                                            ? "text-slate-300"
-                                                            : "text-slate-600"
-                                                    }`}
-                                                >
-                                                    Unit Code
-                                                </label>
+                            {/* BUTTONS */}
 
-                                                <input
-                                                    type="text"
-                                                    value={
-                                                        unit.unitCode
-                                                    }
-                                                    onChange={(event) =>
-                                                        handleFieldChange(
-                                                            index,
-                                                            "unitCode",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className={
-                                                        inputClass
-                                                    }
-                                                />
-
-                                            </div>
-
-                                            <div>
-
-                                                <label
-                                                    className={`mb-1 block text-xs font-medium ${
-                                                        darkMode
-                                                            ? "text-slate-300"
-                                                            : "text-slate-600"
-                                                    }`}
-                                                >
-                                                    Hostname
-                                                </label>
-
-                                                <input
-                                                    type="text"
-                                                    value={
-                                                        unit.hostname
-                                                    }
-                                                    onChange={(event) =>
-                                                        handleFieldChange(
-                                                            index,
-                                                            "hostname",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className={
-                                                        inputClass
-                                                    }
-                                                />
-
-                                            </div>
-
-                                            <div>
-
-                                                <label
-                                                    className={`mb-1 block text-xs font-medium ${
-                                                        darkMode
-                                                            ? "text-slate-300"
-                                                            : "text-slate-600"
-                                                    }`}
-                                                >
-                                                    Radio Configuration
-                                                </label>
-
-                                                <input
-                                                    type="text"
-                                                    value={
-                                                        unit.radioConfiguration
-                                                    }
-                                                    onChange={(event) =>
-                                                        handleFieldChange(
-                                                            index,
-                                                            "radioConfiguration",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className={
-                                                        inputClass
-                                                    }
-                                                />
-
-                                            </div>
-
-                                        </div>
-
-                                    </div>
-                                )
-                            )}
-
-                        </div>
-
-                        {/* FOOTER */}
-
-                        <div
-                            className={`flex justify-end gap-3 border-t px-6 py-4 ${
-                                darkMode
-                                    ? "border-slate-700"
-                                    : "border-slate-200"
-                            }`}
-                        >
-
-                            <button
-                                type="button"
-                                onClick={closeEditModal}
-                                disabled={loading}
-                                className={`rounded-lg px-4 py-2 text-sm font-medium ${
+                            <div
+                                className={`mt-5 flex justify-end gap-3 border-t px-6 py-4 ${
                                     darkMode
-                                        ? "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                        ? "border-slate-700 bg-slate-950/50"
+                                        : "border-slate-200 bg-slate-50"
                                 }`}
                             >
-                                Cancel
-                            </button>
 
-                            <button
-                                type="button"
-                                onClick={handleSave}
-                                disabled={loading}
-                                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                <Save size={16} />
+                                <button
+                                    type="button"
+                                    onClick={
+                                        closeDeleteModal
+                                    }
+                                    disabled={
+                                        Boolean(
+                                            deletingId
+                                        )
+                                    }
+                                    className={
+                                        darkMode
+                                            ? "rounded-lg border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:opacity-50"
+                                            : "rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white disabled:opacity-50"
+                                    }
+                                >
+                                    Cancel
+                                </button>
 
-                                {loading
-                                    ? "Saving..."
-                                    : "Save Changes"}
-                            </button>
+
+                                <button
+                                    type="button"
+                                    onClick={
+                                        deleteUnit
+                                    }
+                                    disabled={
+                                        Boolean(
+                                            deletingId
+                                        )
+                                    }
+                                    className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+
+                                    <Trash2
+                                        size={16}
+                                    />
+
+                                    {deletingId
+                                        ? "Deleting..."
+                                        : "Delete Unit"}
+
+                                </button>
+
+                            </div>
 
                         </div>
 
                     </div>
-                </div>
-            )}
 
-        </div>
+                )}
+
+        </>
     );
 };
 
