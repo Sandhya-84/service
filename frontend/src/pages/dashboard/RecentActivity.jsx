@@ -6,8 +6,19 @@ import React, {
 import { useTheme } from "../../context/ThemeContext";
 
 import {
-    getDashboardData
+    getActivityLogs
 } from "../../api/dashboardApi";
+
+import {
+    PlusCircle,
+    Edit3,
+    Trash2,
+    RefreshCw,
+    FileEdit,
+    Upload,
+    Activity,
+    Clock
+} from "lucide-react";
 
 
 const RecentActivity = () => {
@@ -17,7 +28,7 @@ const RecentActivity = () => {
     } = useTheme();
 
 
-    const [dashboardData, setDashboardData] =
+    const [activities, setActivities] =
         useState([]);
 
 
@@ -33,29 +44,27 @@ const RecentActivity = () => {
         useState(false);
 
 
+    // =====================================================
+    // LOAD ACTIVITY LOGS
+    // =====================================================
+
     useEffect(() => {
 
-        const loadActivity =
+        const loadActivities =
             async () => {
 
                 try {
 
-                    setLoading(
-                        true
-                    );
+                    setLoading(true);
 
                     setError("");
 
-
                     const response =
-                        await getDashboardData();
+                        await getActivityLogs(100);
 
-
-                    setDashboardData(
-                        response.data ||
-                        []
+                    setActivities(
+                        response?.activities || []
                     );
-
 
                 } catch (err) {
 
@@ -63,7 +72,6 @@ const RecentActivity = () => {
                         "Recent activity loading error:",
                         err
                     );
-
 
                     if (
                         err.response?.status ===
@@ -85,125 +93,38 @@ const RecentActivity = () => {
 
                 } finally {
 
-                    setLoading(
-                        false
-                    );
+                    setLoading(false);
 
                 }
 
             };
 
 
-        loadActivity();
+        loadActivities();
 
     }, []);
 
 
-    const activities = [];
+    // =====================================================
+    // FORMAT DATE
+    // =====================================================
 
-
-    dashboardData.forEach(
-        (customer) => {
-
-            customer.purchaseOrders?.forEach(
-                (po) => {
-
-                    activities.push({
-
-                        customerName:
-                            customer.name ||
-                            "Unknown Customer",
-
-                        poNumber:
-                            po.poNumber ||
-                            "N/A",
-
-                        invoiceNumber:
-                            po.invoiceNumber ||
-                            "N/A",
-
-                        supportExpiryDate:
-                            po.supportExpiryDate,
-
-                        renewed:
-                            po.renewed === true,
-
-                        team:
-                            po.team ||
-                            "Unassigned",
-
-                        updatedAt:
-                            po.updatedAt ||
-                            po.createdAt
-
-                    });
-
-                }
-            );
-
-        }
-    );
-
-
-    activities.sort(
-        (a, b) => {
-
-            const dateA =
-                a.updatedAt
-                    ? new Date(
-                        a.updatedAt
-                    ).getTime()
-                    : 0;
-
-
-            const dateB =
-                b.updatedAt
-                    ? new Date(
-                        b.updatedAt
-                    ).getTime()
-                    : 0;
-
-
-            return dateB - dateA;
-
-        }
-    );
-
-
-    const visibleActivities =
-        showAll
-            ? activities
-            : activities.slice(
-                0,
-                5
-            );
-
-
-    const formatDate = (
-        date
-    ) => {
+    const formatDate = (date) => {
 
         if (!date) {
-
             return "N/A";
-
         }
-
 
         const parsedDate =
             new Date(date);
-
 
         if (
             Number.isNaN(
                 parsedDate.getTime()
             )
         ) {
-
             return "N/A";
-
         }
-
 
         return parsedDate.toLocaleDateString(
             "en-IN",
@@ -213,9 +134,142 @@ const RecentActivity = () => {
                 year: "numeric"
             }
         );
-
     };
 
+
+    // =====================================================
+    // FORMAT TIME
+    // =====================================================
+
+    const formatTime = (date) => {
+
+        if (!date) {
+            return "";
+        }
+
+        const parsedDate =
+            new Date(date);
+
+        if (
+            Number.isNaN(
+                parsedDate.getTime()
+            )
+        ) {
+            return "";
+        }
+
+        return parsedDate.toLocaleTimeString(
+            "en-IN",
+            {
+                hour: "2-digit",
+                minute: "2-digit"
+            }
+        );
+    };
+
+
+    // =====================================================
+    // ACTION DETAILS
+    // =====================================================
+
+    const getActionDetails = (
+        action
+    ) => {
+
+        switch (action) {
+
+            case "created":
+                return {
+                    label: "Created",
+                    icon: PlusCircle,
+                    iconClass:
+                        darkMode
+                            ? "bg-green-950 text-green-400"
+                            : "bg-green-100 text-green-600"
+                };
+
+
+            case "edited":
+                return {
+                    label: "Edited",
+                    icon: Edit3,
+                    iconClass:
+                        darkMode
+                            ? "bg-blue-950 text-blue-400"
+                            : "bg-blue-100 text-blue-600"
+                };
+
+
+            case "deleted":
+                return {
+                    label: "Deleted",
+                    icon: Trash2,
+                    iconClass:
+                        darkMode
+                            ? "bg-red-950 text-red-400"
+                            : "bg-red-100 text-red-600"
+                };
+
+
+            case "renewed":
+                return {
+                    label: "Renewed",
+                    icon: RefreshCw,
+                    iconClass:
+                        darkMode
+                            ? "bg-emerald-950 text-emerald-400"
+                            : "bg-emerald-100 text-emerald-600"
+                };
+
+
+            case "po-updated":
+                return {
+                    label: "PO Updated",
+                    icon: FileEdit,
+                    iconClass:
+                        darkMode
+                            ? "bg-purple-950 text-purple-400"
+                            : "bg-purple-100 text-purple-600"
+                };
+
+
+            case "imported":
+                return {
+                    label: "Imported",
+                    icon: Upload,
+                    iconClass:
+                        darkMode
+                            ? "bg-amber-950 text-amber-400"
+                            : "bg-amber-100 text-amber-600"
+                };
+
+
+            default:
+                return {
+                    label: "Activity",
+                    icon: Activity,
+                    iconClass:
+                        darkMode
+                            ? "bg-slate-800 text-slate-300"
+                            : "bg-slate-100 text-slate-600"
+                };
+        }
+    };
+
+
+    // =====================================================
+    // VISIBLE ACTIVITIES
+    // =====================================================
+
+    const visibleActivities =
+        showAll
+            ? activities
+            : activities.slice(0, 5);
+
+
+    // =====================================================
+    // LOADING
+    // =====================================================
 
     if (loading) {
 
@@ -243,25 +297,22 @@ const RecentActivity = () => {
             </div>
 
         );
-
     }
 
 
+    // =====================================================
+    // PAGE
+    // =====================================================
+
     return (
 
-        <div
-            className="
-                w-full
-            "
-        >
+        <div className="w-full">
 
+            {/* ================================================= */}
             {/* PAGE TITLE */}
+            {/* ================================================= */}
 
-            <div
-                className="
-                    mb-6
-                "
-            >
+            <div className="mb-6">
 
                 <h1
                     className={
@@ -281,14 +332,16 @@ const RecentActivity = () => {
                             : "mt-1 text-sm text-slate-500"
                     }
                 >
-                    View recent purchase order updates
-                    and renewal activity.
+                    View recent changes, renewals,
+                    imports and network unit activity.
                 </p>
 
             </div>
 
 
+            {/* ================================================= */}
             {/* ERROR */}
+            {/* ================================================= */}
 
             {error && (
 
@@ -305,7 +358,9 @@ const RecentActivity = () => {
             )}
 
 
+            {/* ================================================= */}
             {/* ACTIVITY CARD */}
+            {/* ================================================= */}
 
             <div
                 className={
@@ -315,7 +370,9 @@ const RecentActivity = () => {
                 }
             >
 
+                {/* ================================================= */}
                 {/* HEADER */}
+                {/* ================================================= */}
 
                 <div
                     className={
@@ -345,8 +402,7 @@ const RecentActivity = () => {
                                     : "mt-1 text-sm text-slate-500"
                             }
                         >
-                            {activities.length} purchase
-                            order activities found
+                            {activities.length} activities found
                         </p>
 
                     </div>
@@ -378,7 +434,9 @@ const RecentActivity = () => {
                 </div>
 
 
+                {/* ================================================= */}
                 {/* EMPTY */}
+                {/* ================================================= */}
 
                 {activities.length === 0 ? (
 
@@ -389,6 +447,15 @@ const RecentActivity = () => {
                             text-center
                         "
                     >
+
+                        <Activity
+                            size={36}
+                            className={
+                                darkMode
+                                    ? "mx-auto mb-3 text-slate-600"
+                                    : "mx-auto mb-3 text-slate-300"
+                            }
+                        />
 
                         <p
                             className={
@@ -410,268 +477,317 @@ const RecentActivity = () => {
                             (
                                 activity,
                                 index
-                            ) => (
+                            ) => {
 
-                                <div
-                                    key={`${activity.poNumber}-${index}`}
-                                    className={`
-                                        border-b
-                                        px-6
-                                        py-5
-                                        last:border-b-0
-                                        ${
-                                            darkMode
-                                                ? "border-slate-800 hover:bg-slate-800/50"
-                                                : "border-slate-100 hover:bg-slate-50"
-                                        }
-                                    `}
-                                >
+                                const action =
+                                    getActionDetails(
+                                        activity.action
+                                    );
+
+                                const ActionIcon =
+                                    action.icon;
+
+                                return (
 
                                     <div
-                                        className="
-                                            flex
-                                            flex-col
-                                            gap-4
-                                            lg:flex-row
-                                            lg:items-center
-                                            lg:justify-between
-                                        "
+                                        key={
+                                            activity._id ||
+                                            `${activity.action}-${activity.createdAt}-${index}`
+                                        }
+                                        className={`
+                                            border-b
+                                            px-6
+                                            py-5
+                                            last:border-b-0
+                                            ${
+                                                darkMode
+                                                    ? "border-slate-800 hover:bg-slate-800/50"
+                                                    : "border-slate-100 hover:bg-slate-50"
+                                            }
+                                        `}
                                     >
 
                                         <div
                                             className="
-                                                min-w-0
-                                                flex-1
+                                                flex
+                                                flex-col
+                                                gap-4
+                                                lg:flex-row
+                                                lg:items-start
                                             "
                                         >
 
+                                            {/* ================================================= */}
+                                            {/* ICON */}
+                                            {/* ================================================= */}
+
                                             <div
-                                                className="
+                                                className={`
                                                     flex
-                                                    flex-wrap
+                                                    h-10
+                                                    w-10
+                                                    shrink-0
                                                     items-center
-                                                    gap-2
-                                                "
+                                                    justify-center
+                                                    rounded-full
+                                                    ${action.iconClass}
+                                                `}
                                             >
 
-                                                <h3
-                                                    className={
-                                                        darkMode
-                                                            ? "font-semibold text-white"
-                                                            : "font-semibold text-slate-900"
-                                                    }
-                                                >
-                                                    {
-                                                        activity.customerName
-                                                    }
-                                                </h3>
-
-
-                                                <span
-                                                    className={
-                                                        darkMode
-                                                            ? "text-slate-500"
-                                                            : "text-slate-400"
-                                                    }
-                                                >
-                                                    •
-                                                </span>
-
-
-                                                <span
-                                                    className={
-                                                        darkMode
-                                                            ? "font-medium text-slate-300"
-                                                            : "font-medium text-slate-700"
-                                                    }
-                                                >
-                                                    PO:{" "}
-                                                    {
-                                                        activity.poNumber
-                                                    }
-                                                </span>
+                                                <ActionIcon
+                                                    size={19}
+                                                />
 
                                             </div>
 
 
-                                            <div
-                                                className="
-                                                    mt-3
-                                                    grid
-                                                    grid-cols-1
-                                                    gap-3
-                                                    sm:grid-cols-2
-                                                    lg:grid-cols-4
-                                                "
-                                            >
+                                            {/* ================================================= */}
+                                            {/* CONTENT */}
+                                            {/* ================================================= */}
 
-                                                <div>
+                                            <div className="min-w-0 flex-1">
 
-                                                    <p
+                                                <div
+                                                    className="
+                                                        flex
+                                                        flex-wrap
+                                                        items-center
+                                                        gap-2
+                                                    "
+                                                >
+
+                                                    <h3
                                                         className={
                                                             darkMode
-                                                                ? "text-xs text-slate-500"
-                                                                : "text-xs text-slate-400"
-                                                        }
-                                                    >
-                                                        Invoice
-                                                    </p>
-
-
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "mt-1 text-sm text-slate-300"
-                                                                : "mt-1 text-sm text-slate-700"
+                                                                ? "font-semibold text-white"
+                                                                : "font-semibold text-slate-900"
                                                         }
                                                     >
                                                         {
-                                                            activity.invoiceNumber
+                                                            activity.title ||
+                                                            action.label
                                                         }
-                                                    </p>
+                                                    </h3>
+
+
+                                                    <span
+                                                        className={`
+                                                            rounded-full
+                                                            px-2.5
+                                                            py-1
+                                                            text-xs
+                                                            font-semibold
+                                                            ${
+                                                                darkMode
+                                                                    ? "bg-slate-800 text-slate-300"
+                                                                    : "bg-slate-100 text-slate-600"
+                                                            }
+                                                        `}
+                                                    >
+                                                        {action.label}
+                                                    </span>
 
                                                 </div>
 
 
-                                                <div>
+                                                <p
+                                                    className={
+                                                        darkMode
+                                                            ? "mt-2 text-sm text-slate-300"
+                                                            : "mt-2 text-sm text-slate-600"
+                                                    }
+                                                >
+                                                    {
+                                                        activity.description
+                                                    }
+                                                </p>
 
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "text-xs text-slate-500"
-                                                                : "text-xs text-slate-400"
-                                                        }
-                                                    >
-                                                        Support Expiry
-                                                    </p>
+
+                                                {/* ================================================= */}
+                                                {/* DETAILS */}
+                                                {/* ================================================= */}
+
+                                                <div
+                                                    className="
+                                                        mt-4
+                                                        grid
+                                                        grid-cols-1
+                                                        gap-3
+                                                        sm:grid-cols-2
+                                                        lg:grid-cols-4
+                                                    "
+                                                >
+
+                                                    {activity.customerName && (
+
+                                                        <div>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "text-xs text-slate-500"
+                                                                        : "text-xs text-slate-400"
+                                                                }
+                                                            >
+                                                                Customer
+                                                            </p>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "mt-1 text-sm font-medium text-slate-300"
+                                                                        : "mt-1 text-sm font-medium text-slate-700"
+                                                                }
+                                                            >
+                                                                {
+                                                                    activity.customerName
+                                                                }
+                                                            </p>
+
+                                                        </div>
+
+                                                    )}
 
 
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "mt-1 text-sm text-slate-300"
-                                                                : "mt-1 text-sm text-slate-700"
-                                                        }
-                                                    >
-                                                        {formatDate(
-                                                            activity.supportExpiryDate
-                                                        )}
-                                                    </p>
+                                                    {activity.poNumber && (
+
+                                                        <div>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "text-xs text-slate-500"
+                                                                        : "text-xs text-slate-400"
+                                                                }
+                                                            >
+                                                                Purchase Order
+                                                            </p>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "mt-1 text-sm font-medium text-slate-300"
+                                                                        : "mt-1 text-sm font-medium text-slate-700"
+                                                                }
+                                                            >
+                                                                {
+                                                                    activity.poNumber
+                                                                }
+                                                            </p>
+
+                                                        </div>
+
+                                                    )}
+
+
+                                                    {activity.unitCode && (
+
+                                                        <div>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "text-xs text-slate-500"
+                                                                        : "text-xs text-slate-400"
+                                                                }
+                                                            >
+                                                                Network Unit
+                                                            </p>
+
+                                                            <p
+                                                                className={
+                                                                    darkMode
+                                                                        ? "mt-1 text-sm font-medium text-slate-300"
+                                                                        : "mt-1 text-sm font-medium text-slate-700"
+                                                                }
+                                                            >
+                                                                {
+                                                                    activity.unitCode
+                                                                }
+
+                                                                {activity.unitCount >
+                                                                    1 &&
+                                                                    ` + ${
+                                                                        activity.unitCount -
+                                                                        1
+                                                                    } more`}
+                                                            </p>
+
+                                                        </div>
+
+                                                    )}
+
+
+                                                    <div>
+
+                                                        <p
+                                                            className={
+                                                                darkMode
+                                                                    ? "text-xs text-slate-500"
+                                                                    : "text-xs text-slate-400"
+                                                            }
+                                                        >
+                                                            Date & Time
+                                                        </p>
+
+                                                        <div
+                                                            className={
+                                                                darkMode
+                                                                    ? "mt-1 flex items-center gap-1.5 text-sm text-slate-300"
+                                                                    : "mt-1 flex items-center gap-1.5 text-sm text-slate-700"
+                                                            }
+                                                        >
+
+                                                            <Clock
+                                                                size={14}
+                                                            />
+
+                                                            <span>
+                                                                {
+                                                                    formatDate(
+                                                                        activity.createdAt
+                                                                    )
+                                                                }
+                                                                {" "}
+                                                                {formatTime(
+                                                                    activity.createdAt
+                                                                )}
+                                                            </span>
+
+                                                        </div>
+
+                                                    </div>
 
                                                 </div>
 
 
-                                                <div>
+                                                {/* ================================================= */}
+                                                {/* DETAILS TEXT */}
+                                                {/* ================================================= */}
 
-                                                    <p
+                                                {activity.details && (
+
+                                                    <div
                                                         className={
                                                             darkMode
-                                                                ? "text-xs text-slate-500"
-                                                                : "text-xs text-slate-400"
+                                                                ? "mt-4 rounded-lg bg-slate-800 px-4 py-3 text-sm text-slate-300"
+                                                                : "mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600"
                                                         }
                                                     >
-                                                        Team
-                                                    </p>
+                                                        {activity.details}
+                                                    </div>
 
-
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "mt-1 text-sm text-slate-300"
-                                                                : "mt-1 text-sm text-slate-700"
-                                                        }
-                                                    >
-                                                        {
-                                                            activity.team
-                                                        }
-                                                    </p>
-
-                                                </div>
-
-
-                                                <div>
-
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "text-xs text-slate-500"
-                                                                : "text-xs text-slate-400"
-                                                        }
-                                                    >
-                                                        Updated
-                                                    </p>
-
-
-                                                    <p
-                                                        className={
-                                                            darkMode
-                                                                ? "mt-1 text-sm text-slate-300"
-                                                                : "mt-1 text-sm text-slate-700"
-                                                        }
-                                                    >
-                                                        {formatDate(
-                                                            activity.updatedAt
-                                                        )}
-                                                    </p>
-
-                                                </div>
+                                                )}
 
                                             </div>
-
-                                        </div>
-
-
-                                        <div
-                                            className="
-                                                shrink-0
-                                            "
-                                        >
-
-                                            {activity.renewed ? (
-
-                                                <span
-                                                    className="
-                                                        inline-flex
-                                                        items-center
-                                                        rounded-full
-                                                        bg-emerald-100
-                                                        px-4
-                                                        py-2
-                                                        text-xs
-                                                        font-semibold
-                                                        text-emerald-700
-                                                    "
-                                                >
-                                                    ✓ Renewed
-                                                </span>
-
-                                            ) : (
-
-                                                <span
-                                                    className="
-                                                        inline-flex
-                                                        items-center
-                                                        rounded-full
-                                                        bg-amber-100
-                                                        px-4
-                                                        py-2
-                                                        text-xs
-                                                        font-semibold
-                                                        text-amber-700
-                                                    "
-                                                >
-                                                    ○ Not Renewed
-                                                </span>
-
-                                            )}
 
                                         </div>
 
                                     </div>
 
-                                </div>
+                                );
 
-                            )
+                            }
                         )}
 
                     </div>
@@ -679,7 +795,9 @@ const RecentActivity = () => {
                 )}
 
 
+                {/* ================================================= */}
                 {/* VIEW ALL */}
+                {/* ================================================= */}
 
                 {activities.length > 5 && (
 
@@ -719,7 +837,6 @@ const RecentActivity = () => {
         </div>
 
     );
-
 };
 
 
