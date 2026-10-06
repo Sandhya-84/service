@@ -2,6 +2,12 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
+    Edit3,
+    X,
+    Save
+} from "lucide-react";
+
+import {
     updatePurchaseOrder,
     createRenewal,
     getRenewalHistory
@@ -17,10 +23,6 @@ const PurchaseOrderCard = ({
 
     const navigate = useNavigate();
 
-    // =========================
-    // STATES
-    // =========================
-
     const [team, setTeam] = useState(
         purchaseOrder?.team || "Unassigned"
     );
@@ -33,7 +35,23 @@ const PurchaseOrderCard = ({
         purchaseOrder?.renewed || false
     );
 
+    const [nextRenewalDateValue, setNextRenewalDateValue] =
+        useState(
+            purchaseOrder?.nextRenewalDate
+                ? formatDateForInput(
+                      purchaseOrder.nextRenewalDate
+                  )
+                : ""
+        );
+
+    const [units, setUnits] = useState(
+        purchaseOrder?.units || []
+    );
+
     const [unitsExpanded, setUnitsExpanded] =
+        useState(false);
+
+    const [editPOOpen, setEditPOOpen] =
         useState(false);
 
     const [renewalOpen, setRenewalOpen] =
@@ -64,10 +82,6 @@ const PurchaseOrderCard = ({
         useState("");
 
 
-    // =========================
-    // UPDATE LOCAL STATE
-    // =========================
-
     useEffect(() => {
 
         if (!purchaseOrder) {
@@ -83,24 +97,28 @@ const PurchaseOrderCard = ({
         );
 
         setRenewed(
-            purchaseOrder.renewed || false
+            Boolean(purchaseOrder.renewed)
+        );
+
+        setNextRenewalDateValue(
+            purchaseOrder.nextRenewalDate
+                ? formatDateForInput(
+                      purchaseOrder.nextRenewalDate
+                  )
+                : ""
+        );
+
+        setUnits(
+            purchaseOrder.units || []
         );
 
     }, [purchaseOrder]);
 
 
-    // =========================
-    // SAFETY
-    // =========================
-
     if (!purchaseOrder) {
         return null;
     }
 
-
-    // =========================
-    // DATA
-    // =========================
 
     const {
         _id,
@@ -108,16 +126,11 @@ const PurchaseOrderCard = ({
         invoiceNumber,
         supportExpiryDate,
         nextRenewalDate,
-        status,
-        units = []
+        status
     } = purchaseOrder;
 
 
-    // =========================
-    // FORMAT DATE
-    // =========================
-
-    const formatDate = (date) => {
+    function formatDate(date) {
 
         if (!date) {
             return "—";
@@ -142,14 +155,10 @@ const PurchaseOrderCard = ({
                 year: "numeric"
             }
         );
-    };
+    }
 
 
-    // =========================
-    // DATE INPUT FORMAT
-    // =========================
-
-    const formatDateForInput = (date) => {
+    function formatDateForInput(date) {
 
         if (!date) {
             return "";
@@ -180,31 +189,27 @@ const PurchaseOrderCard = ({
             ).padStart(2, "0");
 
         return `${year}-${month}-${day}`;
-    };
+    }
 
-
-    // =========================
-    // STATUS
-    // =========================
 
     const getStatusClass = () => {
 
         if (status === "Expired") {
-
             return darkMode
                 ? "bg-red-950 text-red-300"
                 : "bg-red-100 text-red-600";
         }
 
-        if (status === "Expiring Soon") {
-
+        if (
+            status === "Expiring Soon" ||
+            status === "Expiring ≤ 30 Days"
+        ) {
             return darkMode
                 ? "bg-amber-950 text-amber-300"
                 : "bg-amber-100 text-amber-700";
         }
 
         if (status === "Active") {
-
             return darkMode
                 ? "bg-green-950 text-green-300"
                 : "bg-green-100 text-green-700";
@@ -215,10 +220,6 @@ const PurchaseOrderCard = ({
             : "bg-slate-100 text-slate-600";
     };
 
-
-    // =========================
-    // UPDATE PO
-    // =========================
 
     const savePurchaseOrder = async (
         changes
@@ -236,15 +237,19 @@ const PurchaseOrderCard = ({
                 );
 
             const updatedPO =
-                response.purchaseOrder ||
-                response.po ||
+                response?.purchaseOrder ||
+                response?.po ||
                 response;
 
             if (onPurchaseOrderUpdated) {
 
                 onPurchaseOrderUpdated(
                     _id,
-                    updatedPO
+                    {
+                        ...purchaseOrder,
+                        ...updatedPO,
+                        units
+                    }
                 );
             }
 
@@ -267,10 +272,6 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // TEAM
-    // =========================
-
     const handleTeamBlur = async () => {
 
         const cleanedTeam =
@@ -284,10 +285,6 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // NOTES
-    // =========================
-
     const handleNotesBlur = async () => {
 
         await savePurchaseOrder({
@@ -296,28 +293,101 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // RENEWED
-    // =========================
+    const openEditPO = () => {
 
-    const handleRenewedChange = async (
-        event
-    ) => {
+        setError("");
 
-        const checked =
-            event.target.checked;
+        setSuccess("");
 
-        setRenewed(checked);
+        setTeam(
+            purchaseOrder.team ||
+            "Unassigned"
+        );
 
-        await savePurchaseOrder({
-            renewed: checked
-        });
+        setNotes(
+            purchaseOrder.notes || ""
+        );
+
+        setRenewed(
+            Boolean(purchaseOrder.renewed)
+        );
+
+        setNextRenewalDateValue(
+            purchaseOrder.nextRenewalDate
+                ? formatDateForInput(
+                      purchaseOrder.nextRenewalDate
+                  )
+                : ""
+        );
+
+        setEditPOOpen(true);
     };
 
 
-    // =========================
-    // LOAD HISTORY
-    // =========================
+    const closeEditPO = () => {
+
+        if (loading) {
+            return;
+        }
+
+        setEditPOOpen(false);
+
+        setError("");
+    };
+
+
+    const handleSavePO = async () => {
+
+        try {
+
+            setLoading(true);
+
+            setError("");
+
+            const changes = {
+                team:
+                    team.trim() ||
+                    "Unassigned",
+
+                notes:
+                    notes.trim(),
+
+                renewed:
+                    Boolean(renewed),
+
+                nextRenewalDate:
+                    nextRenewalDateValue
+                        ? new Date(
+                              `${nextRenewalDateValue}T00:00:00`
+                          ).toISOString()
+                        : null
+            };
+
+            const updatedPO =
+                await savePurchaseOrder(
+                    changes
+                );
+
+            if (!updatedPO) {
+                return;
+            }
+
+            setEditPOOpen(false);
+
+            setSuccess(
+                "Purchase order updated successfully."
+            );
+
+            setTimeout(() => {
+                setSuccess("");
+            }, 3000);
+
+        } finally {
+
+            setLoading(false);
+        }
+    };
+
 
     const loadRenewalHistory =
         async () => {
@@ -325,6 +395,7 @@ const PurchaseOrderCard = ({
             try {
 
                 setHistoryLoading(true);
+
                 setError("");
 
                 const response =
@@ -333,8 +404,8 @@ const PurchaseOrderCard = ({
                     );
 
                 setRenewalHistory(
-                    response.renewalHistory ||
-                    response.history ||
+                    response?.renewalHistory ||
+                    response?.history ||
                     []
                 );
 
@@ -357,27 +428,22 @@ const PurchaseOrderCard = ({
         };
 
 
-    // =========================
-    // OPEN RENEWAL
-    // =========================
+    const handleOpenRenewal =
+        async () => {
 
-    const handleOpenRenewal = async () => {
+            setError("");
 
-        setError("");
-        setSuccess("");
+            setSuccess("");
 
-        setRenewalOpen(true);
+            setRenewalOpen(true);
 
-        setNewExpiryDate("");
-        setRenewalNotes("");
+            setNewExpiryDate("");
 
-        await loadRenewalHistory();
-    };
+            setRenewalNotes("");
 
+            await loadRenewalHistory();
+        };
 
-    // =========================
-    // CLOSE RENEWAL
-    // =========================
 
     const handleCloseRenewal = () => {
 
@@ -395,31 +461,26 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // HISTORY OPEN/CLOSE
-    // =========================
+    const handleToggleHistory =
+        async () => {
 
-    const handleToggleHistory = async () => {
+            const nextState =
+                !historyExpanded;
 
-        const nextState =
-            !historyExpanded;
+            setHistoryExpanded(
+                nextState
+            );
 
-        setHistoryExpanded(nextState);
+            if (nextState) {
+                await loadRenewalHistory();
+            }
+        };
 
-        if (nextState) {
-
-            await loadRenewalHistory();
-        }
-    };
-
-
-    // =========================
-    // RENEW SUPPORT
-    // =========================
 
     const handleRenew = async () => {
 
         setError("");
+
         setSuccess("");
 
         if (!newExpiryDate) {
@@ -480,7 +541,6 @@ const PurchaseOrderCard = ({
 
             const response =
                 await createRenewal({
-
                     purchaseOrderId:
                         _id,
 
@@ -491,9 +551,8 @@ const PurchaseOrderCard = ({
                         renewalNotes.trim()
                 });
 
-
             const updatedPO =
-                response.purchaseOrder;
+                response?.purchaseOrder;
 
             if (
                 updatedPO &&
@@ -502,7 +561,11 @@ const PurchaseOrderCard = ({
 
                 onPurchaseOrderUpdated(
                     _id,
-                    updatedPO
+                    {
+                        ...purchaseOrder,
+                        ...updatedPO,
+                        units
+                    }
                 );
             }
 
@@ -512,9 +575,9 @@ const PurchaseOrderCard = ({
 
             setRenewed(true);
 
-            await loadRenewalHistory();
-
             setHistoryExpanded(true);
+
+            await loadRenewalHistory();
 
             setSuccess(
                 "Support renewed successfully"
@@ -539,10 +602,6 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // ADD UNIT
-    // =========================
-
     const handleAddUnit = () => {
 
         navigate(
@@ -551,9 +610,24 @@ const PurchaseOrderCard = ({
     };
 
 
-    // =========================
-    // TEXT COLORS
-    // =========================
+    const handleUnitsUpdated = (
+        updatedUnits
+    ) => {
+
+        setUnits(updatedUnits);
+
+        if (onPurchaseOrderUpdated) {
+
+            onPurchaseOrderUpdated(
+                _id,
+                {
+                    ...purchaseOrder,
+                    units: updatedUnits
+                }
+            );
+        }
+    };
+
 
     const primaryText =
         darkMode
@@ -567,7 +641,6 @@ const PurchaseOrderCard = ({
 
 
     return (
-
         <>
 
             {/* ========================================= */}
@@ -585,9 +658,7 @@ const PurchaseOrderCard = ({
                 {/* PO NUMBER */}
 
                 <td
-                    className={
-                        `px-3 py-3 text-sm font-semibold ${primaryText}`
-                    }
+                    className={`px-3 py-3 text-sm font-semibold ${primaryText}`}
                 >
                     {poNumber || "—"}
                 </td>
@@ -595,9 +666,7 @@ const PurchaseOrderCard = ({
 
                 {/* UNITS */}
 
-                <td
-                    className="px-3 py-3"
-                >
+                <td className="px-3 py-3">
 
                     <button
                         type="button"
@@ -612,13 +681,10 @@ const PurchaseOrderCard = ({
                                 : "rounded-md bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700"
                         }
                     >
-
                         {units.length}
-
                         {units.length === 1
                             ? " unit"
                             : " units"}
-
                     </button>
 
                 </td>
@@ -627,9 +693,7 @@ const PurchaseOrderCard = ({
                 {/* INVOICE */}
 
                 <td
-                    className={
-                        `px-3 py-3 text-sm ${secondaryText}`
-                    }
+                    className={`px-3 py-3 text-sm ${secondaryText}`}
                 >
                     {invoiceNumber || "—"}
                 </td>
@@ -638,9 +702,7 @@ const PurchaseOrderCard = ({
                 {/* EXPIRY */}
 
                 <td
-                    className={
-                        `px-3 py-3 text-sm ${secondaryText}`
-                    }
+                    className={`px-3 py-3 text-sm ${secondaryText}`}
                 >
                     {formatDate(
                         supportExpiryDate
@@ -650,14 +712,10 @@ const PurchaseOrderCard = ({
 
                 {/* STATUS */}
 
-                <td
-                    className="px-3 py-3"
-                >
+                <td className="px-3 py-3">
 
                     <span
-                        className={
-                            `inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass()}`
-                        }
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClass()}`}
                     >
                         {status ||
                             "No Expiry Date"}
@@ -668,9 +726,7 @@ const PurchaseOrderCard = ({
 
                 {/* TEAM */}
 
-                <td
-                    className="px-3 py-3"
-                >
+                <td className="px-3 py-3">
 
                     <input
                         type="text"
@@ -693,29 +749,12 @@ const PurchaseOrderCard = ({
                 </td>
 
 
-                {/* RENEWED */}
-
-                <td
-                    className="px-3 py-3 text-center"
-                >
-
-                    <input
-                        type="checkbox"
-                        checked={renewed}
-                        onChange={
-                            handleRenewedChange
-                        }
-                        className="h-4 w-4 cursor-pointer"
-                    />
-
-                </td>
+                {/* RENEWED REMOVED FROM HERE */}
 
 
                 {/* NOTES */}
 
-                <td
-                    className="px-3 py-3"
-                >
+                <td className="px-3 py-3">
 
                     <input
                         type="text"
@@ -760,6 +799,24 @@ const PurchaseOrderCard = ({
 
                     <div className="flex flex-wrap items-center gap-2">
 
+                        {/* EDIT PO */}
+
+                        <button
+                            type="button"
+                            onClick={
+                                openEditPO
+                            }
+                            className={
+                                darkMode
+                                    ? "inline-flex items-center gap-1.5 rounded-md bg-blue-950 px-3 py-1.5 text-xs font-semibold text-blue-300"
+                                    : "inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                            }
+                        >
+                            <Edit3 size={14} />
+                            Edit PO
+                        </button>
+
+
                         {/* ADD UNIT */}
 
                         <button
@@ -777,7 +834,7 @@ const PurchaseOrderCard = ({
                         </button>
 
 
-                        {/* RENEW / CLOSE */}
+                        {/* RENEW SUPPORT */}
 
                         {!renewalOpen ? (
 
@@ -814,26 +871,17 @@ const PurchaseOrderCard = ({
                         )}
 
 
-                        {/* NEXT RENEWAL */}
-
                         {nextRenewalDate && (
 
                             <span
-                                className={
-                                    `text-xs ${secondaryText}`
-                                }
+                                className={`text-xs ${secondaryText}`}
                             >
-
-                                Next renewal:
-
-                                {" "}
-
+                                Next renewal:{" "}
                                 <strong>
                                     {formatDate(
                                         nextRenewalDate
                                     )}
                                 </strong>
-
                             </span>
 
                         )}
@@ -870,6 +918,9 @@ const PurchaseOrderCard = ({
                                 purchaseOrderId={_id}
                                 units={units}
                                 darkMode={darkMode}
+                                onUnitsUpdated={
+                                    handleUnitsUpdated
+                                }
                             />
 
                         </div>
@@ -877,6 +928,265 @@ const PurchaseOrderCard = ({
                     </td>
 
                 </tr>
+
+            )}
+
+
+            {/* ========================================= */}
+            {/* EDIT PO MODAL */}
+            {/* ========================================= */}
+
+            {editPOOpen && (
+
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+
+                    <div
+                        className={`w-full max-w-lg rounded-2xl shadow-2xl ${
+                            darkMode
+                                ? "bg-slate-900"
+                                : "bg-white"
+                        }`}
+                    >
+
+                        {/* HEADER */}
+
+                        <div
+                            className={`flex items-center justify-between border-b px-6 py-4 ${
+                                darkMode
+                                    ? "border-slate-700"
+                                    : "border-slate-200"
+                            }`}
+                        >
+
+                            <div>
+
+                                <h2
+                                    className={`text-lg font-semibold ${
+                                        darkMode
+                                            ? "text-white"
+                                            : "text-slate-900"
+                                    }`}
+                                >
+                                    Edit Purchase Order
+                                </h2>
+
+                                <p
+                                    className={`mt-1 text-xs ${secondaryText}`}
+                                >
+                                    PO:{" "}
+                                    {poNumber || "—"}
+                                </p>
+
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={
+                                    closeEditPO
+                                }
+                                disabled={loading}
+                                className={`rounded-lg p-2 ${
+                                    darkMode
+                                        ? "text-slate-400 hover:bg-slate-800 hover:text-white"
+                                        : "text-slate-500 hover:bg-slate-100"
+                                }`}
+                            >
+                                <X size={20} />
+                            </button>
+
+                        </div>
+
+
+                        {/* FORM */}
+
+                        <div className="space-y-4 p-6">
+
+                            {error && (
+
+                                <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    {error}
+                                </div>
+
+                            )}
+
+
+                            {/* TEAM */}
+
+                            <div>
+
+                                <label
+                                    className={`mb-1 block text-sm font-medium ${secondaryText}`}
+                                >
+                                    Team
+                                </label>
+
+                                <input
+                                    type="text"
+                                    value={team}
+                                    onChange={(event) =>
+                                        setTeam(
+                                            event.target.value
+                                        )
+                                    }
+                                    className={
+                                        darkMode
+                                            ? "w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                                            : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                    }
+                                />
+
+                            </div>
+
+
+                            {/* NOTES */}
+
+                            <div>
+
+                                <label
+                                    className={`mb-1 block text-sm font-medium ${secondaryText}`}
+                                >
+                                    Notes
+                                </label>
+
+                                <textarea
+                                    rows="3"
+                                    value={notes}
+                                    onChange={(event) =>
+                                        setNotes(
+                                            event.target.value
+                                        )
+                                    }
+                                    className={
+                                        darkMode
+                                            ? "w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                                            : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                    }
+                                />
+
+                            </div>
+
+
+                            {/* NEXT RENEWAL DATE */}
+
+                            <div>
+
+                                <label
+                                    className={`mb-1 block text-sm font-medium ${secondaryText}`}
+                                >
+                                    Next Renewal Date
+                                </label>
+
+                                <input
+                                    type="date"
+                                    value={
+                                        nextRenewalDateValue
+                                    }
+                                    onChange={(event) =>
+                                        setNextRenewalDateValue(
+                                            event.target.value
+                                        )
+                                    }
+                                    className={
+                                        darkMode
+                                            ? "w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
+                                            : "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                                    }
+                                />
+
+                            </div>
+
+
+                            {/* RENEWED */}
+
+                            <div
+                                className={`flex items-center justify-between rounded-lg border p-4 ${
+                                    darkMode
+                                        ? "border-slate-700 bg-slate-800"
+                                        : "border-slate-200 bg-slate-50"
+                                }`}
+                            >
+
+                                <div>
+
+                                    <p
+                                        className={`text-sm font-medium ${
+                                            darkMode
+                                                ? "text-white"
+                                                : "text-slate-800"
+                                        }`}
+                                    >
+                                        Renewed
+                                    </p>
+
+                                    <p
+                                        className={`mt-1 text-xs ${secondaryText}`}
+                                    >
+                                        Mark this purchase order as renewed.
+                                    </p>
+
+                                </div>
+
+                                <input
+                                    type="checkbox"
+                                    checked={renewed}
+                                    onChange={(event) =>
+                                        setRenewed(
+                                            event.target.checked
+                                        )
+                                    }
+                                    className="h-5 w-5 cursor-pointer"
+                                />
+
+                            </div>
+
+                        </div>
+
+
+                        {/* FOOTER */}
+
+                        <div
+                            className={`flex justify-end gap-3 border-t px-6 py-4 ${
+                                darkMode
+                                    ? "border-slate-700"
+                                    : "border-slate-200"
+                            }`}
+                        >
+
+                            <button
+                                type="button"
+                                onClick={
+                                    closeEditPO
+                                }
+                                disabled={loading}
+                                className={
+                                    darkMode
+                                        ? "rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-700"
+                                        : "rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                                }
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={
+                                    handleSavePO
+                                }
+                                disabled={loading}
+                                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                <Save size={16} />
+
+                                {loading
+                                    ? "Saving..."
+                                    : "Save Changes"}
+                            </button>
+
+                        </div>
+
+                    </div>
+
+                </div>
 
             )}
 
@@ -908,27 +1218,18 @@ const PurchaseOrderCard = ({
                             }
                         >
 
-                            {/* TITLE */}
-
                             <div className="mb-4">
 
                                 <h3
-                                    className={
-                                        `text-sm font-semibold ${primaryText}`
-                                    }
+                                    className={`text-sm font-semibold ${primaryText}`}
                                 >
                                     Renew Support
                                 </h3>
 
                                 <p
-                                    className={
-                                        `mt-1 text-xs ${secondaryText}`
-                                    }
+                                    className={`mt-1 text-xs ${secondaryText}`}
                                 >
-                                    Current expiry:
-
-                                    {" "}
-
+                                    Current expiry:{" "}
                                     <strong>
                                         {formatDate(
                                             supportExpiryDate
@@ -939,18 +1240,12 @@ const PurchaseOrderCard = ({
                             </div>
 
 
-                            {/* FORM */}
-
-                            <div
-                                className="grid gap-3 md:grid-cols-3"
-                            >
+                            <div className="grid gap-3 md:grid-cols-3">
 
                                 <div>
 
                                     <label
-                                        className={
-                                            `mb-1 block text-xs font-medium ${secondaryText}`
-                                        }
+                                        className={`mb-1 block text-xs font-medium ${secondaryText}`}
                                     >
                                         New Expiry Date
                                     </label>
@@ -965,11 +1260,10 @@ const PurchaseOrderCard = ({
                                                 supportExpiryDate
                                             )
                                         }
-                                        onChange={
-                                            (event) =>
-                                                setNewExpiryDate(
-                                                    event.target.value
-                                                )
+                                        onChange={(event) =>
+                                            setNewExpiryDate(
+                                                event.target.value
+                                            )
                                         }
                                         className={
                                             darkMode
@@ -981,14 +1275,10 @@ const PurchaseOrderCard = ({
                                 </div>
 
 
-                                <div
-                                    className="md:col-span-2"
-                                >
+                                <div className="md:col-span-2">
 
                                     <label
-                                        className={
-                                            `mb-1 block text-xs font-medium ${secondaryText}`
-                                        }
+                                        className={`mb-1 block text-xs font-medium ${secondaryText}`}
                                     >
                                         Renewal Notes
                                     </label>
@@ -998,13 +1288,11 @@ const PurchaseOrderCard = ({
                                         value={
                                             renewalNotes
                                         }
-                                        onChange={
-                                            (event) =>
-                                                setRenewalNotes(
-                                                    event.target.value
-                                                )
+                                        onChange={(event) =>
+                                            setRenewalNotes(
+                                                event.target.value
+                                            )
                                         }
-                                        placeholder="Optional renewal notes"
                                         className={
                                             darkMode
                                                 ? "w-full rounded-md border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white"
@@ -1017,71 +1305,38 @@ const PurchaseOrderCard = ({
                             </div>
 
 
-                            {/* CONFIRM */}
-
-                            <div className="mt-3">
-
-                                <button
-                                    type="button"
-                                    onClick={
-                                        handleRenew
-                                    }
-                                    disabled={
-                                        loading
-                                    }
-                                    className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-
-                                    {loading
-                                        ? "Renewing..."
-                                        : "Confirm Renewal"}
-
-                                </button>
-
-                            </div>
-
-
-                            {/* ERROR */}
-
                             {error && (
 
-                                <div
-                                    className={
-                                        darkMode
-                                            ? "mt-3 rounded-md bg-red-950 px-3 py-2 text-xs text-red-300"
-                                            : "mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-600"
-                                    }
-                                >
+                                <div className="mt-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
                                     {error}
                                 </div>
 
                             )}
 
 
-                            {/* SUCCESS */}
-
                             {success && (
 
-                                <div
-                                    className={
-                                        darkMode
-                                            ? "mt-3 rounded-md bg-green-950 px-3 py-2 text-xs text-green-300"
-                                            : "mt-3 rounded-md bg-green-50 px-3 py-2 text-xs text-green-700"
-                                    }
-                                >
+                                <div className="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-700">
                                     {success}
                                 </div>
 
                             )}
 
 
-                            {/* ===================================== */}
-                            {/* RENEWAL HISTORY */}
-                            {/* ===================================== */}
+                            <div className="mt-4 flex flex-wrap gap-2">
 
-                            <div className="mt-5">
-
-                                {/* HISTORY HEADER */}
+                                <button
+                                    type="button"
+                                    onClick={
+                                        handleRenew
+                                    }
+                                    disabled={loading}
+                                    className="rounded-md bg-green-600 px-4 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-60"
+                                >
+                                    {loading
+                                        ? "Renewing..."
+                                        : "Confirm Renewal"}
+                                </button>
 
                                 <button
                                     type="button"
@@ -1090,98 +1345,53 @@ const PurchaseOrderCard = ({
                                     }
                                     className={
                                         darkMode
-                                            ? "flex w-full items-center justify-between rounded-md px-2 py-2 text-left hover:bg-slate-800"
-                                            : "flex w-full items-center justify-between rounded-md px-2 py-2 text-left hover:bg-slate-100"
+                                            ? "rounded-md bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-300"
+                                            : "rounded-md bg-slate-200 px-4 py-2 text-xs font-semibold text-slate-700"
                                     }
                                 >
-
-                                    <div className="flex items-center gap-2">
-
-                                        {/* ARROW */}
-
-                                        <span
-                                            className={
-                                                darkMode
-                                                    ? "text-xs text-slate-400"
-                                                    : "text-xs text-slate-500"
-                                            }
-                                        >
-
-                                            {historyExpanded
-                                                ? "▼"
-                                                : "▶"}
-
-                                        </span>
-
-
-                                        <span
-                                            className={
-                                                darkMode
-                                                    ? "text-xs font-semibold uppercase tracking-wide text-slate-300"
-                                                    : "text-xs font-semibold uppercase tracking-wide text-slate-600"
-                                            }
-                                        >
-                                            Renewal History
-                                        </span>
-
-                                    </div>
-
-
-                                    <span
-                                        className={
-                                            darkMode
-                                                ? "text-xs text-slate-500"
-                                                : "text-xs text-slate-400"
-                                        }
-                                    >
-
-                                        {renewalHistory.length}
-
-                                        {renewalHistory.length === 1
-                                            ? " record"
-                                            : " records"}
-
-                                    </span>
-
+                                    {historyExpanded
+                                        ? "Hide History"
+                                        : "Renewal History"}
                                 </button>
 
+                            </div>
 
-                                {/* HISTORY CONTENT */}
 
-                                {historyExpanded && (
+                            {historyExpanded && (
 
-                                    <div
-                                        className="mt-2 space-y-2"
-                                    >
+                                <div className="mt-4">
 
-                                        {historyLoading ? (
+                                    {historyLoading ? (
 
-                                            <p
-                                                className={
-                                                    `px-2 text-xs ${secondaryText}`
-                                                }
-                                            >
-                                                Loading history...
-                                            </p>
+                                        <p
+                                            className={`text-xs ${secondaryText}`}
+                                        >
+                                            Loading renewal history...
+                                        </p>
 
-                                        ) : renewalHistory.length === 0 ? (
+                                    ) : renewalHistory.length ===
+                                      0 ? (
 
-                                            <p
-                                                className={
-                                                    `px-2 text-xs ${secondaryText}`
-                                                }
-                                            >
-                                                No renewal history found.
-                                            </p>
+                                        <p
+                                            className={`text-xs ${secondaryText}`}
+                                        >
+                                            No renewal history found.
+                                        </p>
 
-                                        ) : (
+                                    ) : (
 
-                                            renewalHistory.map(
-                                                (history) => (
+                                        <div className="space-y-2">
+
+                                            {renewalHistory.map(
+                                                (
+                                                    history,
+                                                    index
+                                                ) => (
 
                                                     <div
                                                         key={
-                                                            history._id
+                                                            history._id ||
+                                                            index
                                                         }
                                                         className={
                                                             darkMode
@@ -1191,44 +1401,31 @@ const PurchaseOrderCard = ({
                                                     >
 
                                                         <div
-                                                            className={
-                                                                `grid gap-2 text-xs md:grid-cols-3 ${secondaryText}`
-                                                            }
+                                                            className={`grid gap-2 text-xs md:grid-cols-3 ${secondaryText}`}
                                                         >
 
                                                             <div>
                                                                 <span className="font-semibold">
                                                                     Old:
-                                                                </span>
-
-                                                                {" "}
-
+                                                                </span>{" "}
                                                                 {formatDate(
                                                                     history.oldExpiryDate
                                                                 )}
                                                             </div>
 
-
                                                             <div>
                                                                 <span className="font-semibold">
                                                                     New:
-                                                                </span>
-
-                                                                {" "}
-
+                                                                </span>{" "}
                                                                 {formatDate(
                                                                     history.newExpiryDate
                                                                 )}
                                                             </div>
 
-
                                                             <div>
                                                                 <span className="font-semibold">
                                                                     Updated:
-                                                                </span>
-
-                                                                {" "}
-
+                                                                </span>{" "}
                                                                 {formatDate(
                                                                     history.createdAt
                                                                 )}
@@ -1236,13 +1433,10 @@ const PurchaseOrderCard = ({
 
                                                         </div>
 
-
                                                         {history.notes && (
 
                                                             <p
-                                                                className={
-                                                                    `mt-2 text-xs ${secondaryText}`
-                                                                }
+                                                                className={`mt-2 text-xs ${secondaryText}`}
                                                             >
                                                                 {history.notes}
                                                             </p>
@@ -1252,15 +1446,15 @@ const PurchaseOrderCard = ({
                                                     </div>
 
                                                 )
-                                            )
+                                            )}
 
-                                        )}
+                                        </div>
 
-                                    </div>
+                                    )}
 
-                                )}
+                                </div>
 
-                            </div>
+                            )}
 
                         </div>
 
@@ -1271,7 +1465,6 @@ const PurchaseOrderCard = ({
             )}
 
         </>
-
     );
 };
 

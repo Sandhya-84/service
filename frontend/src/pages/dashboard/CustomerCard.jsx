@@ -3,32 +3,20 @@ import PurchaseOrderCard from "./PurchaseOrderCard";
 
 const CustomerCard = ({
     customer,
-    darkMode,
-    expanded,
+    darkMode = false,
+    expanded = false,
     onPurchaseOrderUpdated
 }) => {
 
-    // =========================
-    // MANUAL CUSTOMER EXPANSION
-    // =========================
+    const [manuallyExpanded, setManuallyExpanded] =
+        useState(null);
 
-    const [
-        manuallyExpanded,
-        setManuallyExpanded
-    ] = useState(null);
-
-
-    // =========================
-    // PURCHASE ORDERS
-    // =========================
+    if (!customer) {
+        return null;
+    }
 
     const purchaseOrders =
-        customer?.purchaseOrders || [];
-
-
-    // =========================
-    // TOTAL UNITS
-    // =========================
+        customer.purchaseOrders || [];
 
     const totalUnits =
         purchaseOrders.reduce(
@@ -37,21 +25,11 @@ const CustomerCard = ({
             0
         );
 
-
-    // =========================
-    // EXPIRED COUNT
-    // =========================
-
     const expiredCount =
         purchaseOrders.filter(
             (po) =>
                 po.status === "Expired"
         ).length;
-
-
-    // =========================
-    // NO EXPIRY COUNT
-    // =========================
 
     const noExpiryCount =
         purchaseOrders.filter(
@@ -59,41 +37,32 @@ const CustomerCard = ({
                 po.status === "No Expiry Date"
         ).length;
 
-
-    // =========================
-    // ACTUAL EXPANDED STATE
-    // =========================
-
+    /*
+     * If Dashboard opens/closes all customers,
+     * use that value initially.
+     *
+     * After the user clicks one customer,
+     * its own state takes control.
+     */
     const isExpanded =
         manuallyExpanded === null
             ? expanded
             : manuallyExpanded;
 
-
-    // =========================
-    // TOGGLE CUSTOMER
-    // =========================
-
     const toggleCustomer = () => {
-
         setManuallyExpanded(
-            !isExpanded
-        );
+            (previous) => {
+                const current =
+                    previous === null
+                        ? expanded
+                        : previous;
 
+                return !current;
+            }
+        );
     };
 
-
-    // =========================
-    // SAFETY CHECK
-    // =========================
-
-    if (!customer) {
-        return null;
-    }
-
-
     return (
-
         <div
             className={
                 darkMode
@@ -102,17 +71,27 @@ const CustomerCard = ({
             }
         >
 
-            {/* ========================= */}
+            {/* ================================================= */}
             {/* CUSTOMER HEADER */}
-            {/* ========================= */}
+            {/* ================================================= */}
 
-            <button
-                type="button"
+            <div
+                role="button"
+                tabIndex={0}
                 onClick={toggleCustomer}
+                onKeyDown={(event) => {
+                    if (
+                        event.key === "Enter" ||
+                        event.key === " "
+                    ) {
+                        event.preventDefault();
+                        toggleCustomer();
+                    }
+                }}
                 className={
                     darkMode
-                        ? "flex w-full items-center justify-between gap-4 border-b border-slate-700 px-4 py-3 text-left hover:bg-slate-800"
-                        : "flex w-full items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 text-left hover:bg-slate-50"
+                        ? "flex w-full cursor-pointer items-center justify-between gap-4 border-b border-slate-700 px-4 py-3 text-left transition hover:bg-slate-800"
+                        : "flex w-full cursor-pointer items-center justify-between gap-4 border-b border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50"
                 }
             >
 
@@ -120,14 +99,20 @@ const CustomerCard = ({
 
                 <div className="flex min-w-0 items-center gap-2">
 
-                    {/* ARROW */}
+                    {/* DOWN / RIGHT ARROW */}
 
-                    <span className="w-4 text-lg leading-none text-slate-500">
-
-                        {isExpanded
-                            ? "⌄"
-                            : "›"}
-
+                    <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none transition-transform duration-200 ${
+                            isExpanded
+                                ? "rotate-0"
+                                : "-rotate-90"
+                        } ${
+                            darkMode
+                                ? "text-slate-400"
+                                : "text-slate-500"
+                        }`}
+                    >
+                        ⌄
                     </span>
 
 
@@ -144,7 +129,7 @@ const CustomerCard = ({
                     </span>
 
 
-                    {/* PO + UNIT COUNT */}
+                    {/* PO COUNT */}
 
                     <span
                         className={
@@ -153,40 +138,47 @@ const CustomerCard = ({
                                 : "text-xs text-slate-500"
                         }
                     >
-
-                        {purchaseOrders.length}
-
-                        {" "}
-
+                        {purchaseOrders.length}{" "}
                         {purchaseOrders.length === 1
                             ? "PO"
                             : "POs"}
+                    </span>
 
-                        {" · "}
 
-                        {totalUnits}
+                    <span
+                        className={
+                            darkMode
+                                ? "text-xs text-slate-600"
+                                : "text-xs text-slate-400"
+                        }
+                    >
+                        •
+                    </span>
 
-                        {" "}
 
+                    {/* UNIT COUNT */}
+
+                    <span
+                        className={
+                            darkMode
+                                ? "text-xs text-slate-400"
+                                : "text-xs text-slate-500"
+                        }
+                    >
+                        {totalUnits}{" "}
                         {totalUnits === 1
                             ? "unit"
                             : "units"}
-
                     </span>
 
                 </div>
 
 
-                {/* ========================= */}
-                {/* STATUS BADGES */}
-                {/* ========================= */}
+                {/* RIGHT SIDE */}
 
-                <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-
-                    {/* EXPIRED */}
+                <div className="flex shrink-0 items-center gap-3">
 
                     {expiredCount > 0 && (
-
                         <span
                             className={
                                 darkMode
@@ -194,44 +186,31 @@ const CustomerCard = ({
                                     : "rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-600"
                             }
                         >
-
-                            {expiredCount}
-
-                            {" expired"}
-
+                            {expiredCount} expired
                         </span>
-
                     )}
 
 
-                    {/* NO EXPIRY */}
-
                     {noExpiryCount > 0 && (
-
                         <span
                             className={
                                 darkMode
-                                    ? "rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-slate-300"
-                                    : "rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600"
+                                    ? "hidden rounded-full bg-slate-700 px-3 py-1 text-xs font-semibold text-slate-300 sm:inline-flex"
+                                    : "hidden rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 sm:inline-flex"
                             }
                         >
-
-                            {noExpiryCount}
-
-                            {" no date on file"}
-
+                            {noExpiryCount} no expiry
                         </span>
-
                     )}
 
                 </div>
 
-            </button>
+            </div>
 
 
-            {/* ========================= */}
+            {/* ================================================= */}
             {/* PURCHASE ORDER TABLE */}
-            {/* ========================= */}
+            {/* ================================================= */}
 
             {isExpanded && (
 
@@ -251,35 +230,79 @@ const CustomerCard = ({
 
                             <tr>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     PO Number
                                 </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Units
                                 </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Invoice
                                 </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Support Expiry
                                 </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Status
                                 </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Team
                                 </th>
 
-                                <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                    Renewed
-                                </th>
 
-                                <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                <th
+                                    className={
+                                        darkMode
+                                            ? "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+                                            : "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                                    }
+                                >
                                     Notes
                                 </th>
 
@@ -297,7 +320,7 @@ const CustomerCard = ({
                                 <tr>
 
                                     <td
-                                        colSpan="8"
+                                        colSpan="7"
                                         className={
                                             darkMode
                                                 ? "px-4 py-6 text-center text-sm text-slate-400"
@@ -337,9 +360,7 @@ const CustomerCard = ({
             )}
 
         </div>
-
     );
-
 };
 
 export default CustomerCard;
