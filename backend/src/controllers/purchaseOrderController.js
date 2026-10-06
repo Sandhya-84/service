@@ -1,5 +1,6 @@
 import PurchaseOrder from "../models/PurchaseOrder.js";
 import Customer from "../models/Customer.js";
+import ActivityLog from "../models/ActivityLog.js";
 
 
 // =====================================================
@@ -112,6 +113,59 @@ export const createPurchaseOrder = async (req, res) => {
                     renewed === true
 
             });
+
+
+        // ---------------------------------------------
+        // LOG ACTIVITY
+        // ---------------------------------------------
+
+        try {
+
+            await ActivityLog.create({
+
+                action: "created",
+
+                title:
+                    `Purchase Order ${purchaseOrder.poNumber} created`,
+
+                description:
+                    `Purchase order ${purchaseOrder.poNumber} was created.`,
+
+                customerName:
+                    customer.name || "",
+
+                customerId:
+                    purchaseOrder.customerId,
+
+                purchaseOrderId:
+                    purchaseOrder._id,
+
+                poNumber:
+                    purchaseOrder.poNumber,
+
+                unitCount: 0,
+
+                details:
+                    `Invoice: ${
+                        purchaseOrder.invoiceNumber ||
+                        "Not provided"
+                    }`,
+
+                performedBy:
+                    req.user?._id ||
+                    req.user?.id ||
+                    null
+
+            });
+
+        } catch (activityError) {
+
+            console.error(
+                "Create PO activity logging error:",
+                activityError
+            );
+
+        }
 
 
         return res.status(201).json({
@@ -244,6 +298,34 @@ export const updatePurchaseOrder = async (
         }
 
 
+        // ---------------------------------------------
+        // STORE OLD VALUES
+        // ---------------------------------------------
+
+        const oldValues = {
+
+            team:
+                purchaseOrder.team || "",
+
+            notes:
+                purchaseOrder.notes || "",
+
+            renewed:
+                Boolean(
+                    purchaseOrder.renewed
+                ),
+
+            nextRenewalDate:
+                purchaseOrder.nextRenewalDate ||
+                null
+
+        };
+
+
+        // ---------------------------------------------
+        // UPDATE FIELDS
+        // ---------------------------------------------
+
         if (team !== undefined) {
 
             purchaseOrder.team =
@@ -275,6 +357,153 @@ export const updatePurchaseOrder = async (
 
 
         await purchaseOrder.save();
+
+
+        // ---------------------------------------------
+        // DETECT CHANGES
+        // ---------------------------------------------
+
+        const changes = [];
+
+
+        if (
+            team !== undefined &&
+            oldValues.team !==
+                (purchaseOrder.team || "")
+        ) {
+
+            changes.push(
+                `Team: ${
+                    oldValues.team ||
+                    "Unassigned"
+                } → ${
+                    purchaseOrder.team ||
+                    "Unassigned"
+                }`
+            );
+
+        }
+
+
+        if (
+            notes !== undefined &&
+            oldValues.notes !==
+                (purchaseOrder.notes || "")
+        ) {
+
+            changes.push(
+                "Notes updated"
+            );
+
+        }
+
+
+        if (
+            renewed !== undefined &&
+            oldValues.renewed !==
+                Boolean(
+                    purchaseOrder.renewed
+                )
+        ) {
+
+            changes.push(
+                `Renewed: ${
+                    oldValues.renewed
+                        ? "Yes"
+                        : "No"
+                } → ${
+                    purchaseOrder.renewed
+                        ? "Yes"
+                        : "No"
+                }`
+            );
+
+        }
+
+
+        if (
+            nextRenewalDate !== undefined &&
+            String(
+                oldValues.nextRenewalDate || ""
+            ) !==
+                String(
+                    purchaseOrder.nextRenewalDate || ""
+                )
+        ) {
+
+            changes.push(
+                "Next Renewal Date updated"
+            );
+
+        }
+
+
+        // ---------------------------------------------
+        // LOG PO UPDATE ACTIVITY
+        // ---------------------------------------------
+
+        if (changes.length > 0) {
+
+            try {
+
+                const customer =
+                    await Customer.findById(
+                        purchaseOrder.customerId
+                    ).lean();
+
+
+                await ActivityLog.create({
+
+                    action: "po-updated",
+
+                    title:
+                        `Purchase Order ${
+                            purchaseOrder.poNumber ||
+                            ""
+                        } updated`,
+
+                    description:
+                        `Purchase order ${
+                            purchaseOrder.poNumber ||
+                            ""
+                        } was updated.`,
+
+                    customerName:
+                        customer?.name || "",
+
+                    customerId:
+                        purchaseOrder.customerId ||
+                        null,
+
+                    purchaseOrderId:
+                        purchaseOrder._id,
+
+                    poNumber:
+                        purchaseOrder.poNumber ||
+                        "",
+
+                    unitCount: 0,
+
+                    details:
+                        changes.join(" • "),
+
+                    performedBy:
+                        req.user?._id ||
+                        req.user?.id ||
+                        null
+
+                });
+
+            } catch (activityError) {
+
+                console.error(
+                    "PO activity logging error:",
+                    activityError
+                );
+
+            }
+
+        }
 
 
         return res.status(200).json({

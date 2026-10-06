@@ -1,9 +1,9 @@
 import express from "express";
 
 import {
-    createRenewalHistory,
-    getRenewalHistory
-} from "../controllers/renewalHistoryController.js";
+    createActivityLog,
+    getActivityLogs
+} from "../controllers/activityLogController.js";
 
 import authMiddleware from "../middleware/authMiddleware.js";
 
@@ -12,13 +12,13 @@ const router = express.Router();
 router.get(
     "/",
     authMiddleware,
-    getRenewalHistory
+    getActivityLogs
 );
 
 router.post(
     "/",
     authMiddleware,
-    createRenewalHistory
+    createActivityLog
 );
 
 export default router;
