@@ -11,7 +11,7 @@ const StatCards = ({
             value: summary.customers
         },
         {
-            title: "Purchase Orders",
+            title: "Customer Orders",
             value: summary.purchaseOrders
         },
         {

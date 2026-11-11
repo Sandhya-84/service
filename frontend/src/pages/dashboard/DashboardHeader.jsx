@@ -101,7 +101,7 @@ const DashboardHeader = ({ onLogout }) => {
         },
 
         {
-            label: "Add PO",
+            label: "Add Customer Order ",
             path: "/add-purchase-order",
             icon: FilePlus
         },

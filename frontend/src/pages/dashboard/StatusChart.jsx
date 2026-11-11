@@ -57,18 +57,8 @@ const StatusChart = ({
             <div className="mb-4">
 
                 <h2 className="font-sora text-lg font-semibold">
-                    Purchase Order Status
-                </h2>
-
-                <p
-                    className={
-                        darkMode
-                            ? "text-sm text-slate-400"
-                            : "text-sm text-slate-500"
-                    }
-                >
                     Current support expiry status
-                </p>
+                </h2>
 
             </div>
 

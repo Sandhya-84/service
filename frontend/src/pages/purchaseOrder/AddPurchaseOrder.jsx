@@ -21,7 +21,7 @@ import {
 
 
 const AddPurchaseOrder = () => {
-
+ 
     const navigate = useNavigate();
 
     const {
@@ -345,7 +345,7 @@ const AddPurchaseOrder = () => {
                                     : "font-sora text-2xl font-bold text-slate-900"
                             }
                         >
-                            Add Purchase Order
+                            Add Customer Order Details
                         </h1>
 
 
@@ -399,7 +399,7 @@ const AddPurchaseOrder = () => {
                                     : "font-sora text-lg font-bold text-slate-900"
                             }
                         >
-                            Purchase Order Information
+                            Customer Order Information
                         </h2>
 
 
