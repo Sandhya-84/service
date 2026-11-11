@@ -56,7 +56,7 @@ const normalizeCustomerName = (
      *
      * Both sheets are stored under:
      *
-     *             Comcast
+     *           Comcast
      *
      * Therefore their POs and units are
      * combined under the same customerId.
@@ -977,7 +977,7 @@ const getOrCreatePO =
 
 
 /* =========================================================
-   NETWORK UNIT
+   NETWORK UNIT (SAFE FIND-THEN-CREATE / UPDATE)
 ========================================================= */
 
 const getOrCreateUnit =
@@ -997,113 +997,61 @@ const getOrCreateUnit =
             return null;
         }
 
+        const targetPOId = purchaseOrderId || null;
+        const targetHostname = hostname || "";
 
-        /*
-         * IMPORTANT:
-         *
-         * A unit is unique by:
-         *
-         * customerId
-         * purchaseOrderId
-         * unitCode
-         * hostname
-         *
-         * Therefore the same unit under two
-         * different POs is NOT merged.
-         *
-         * This preserves historical records.
-         */
         const filter = {
-
             customerId,
-
-            purchaseOrderId:
-                purchaseOrderId ||
-                null,
-
+            purchaseOrderId: targetPOId,
             unitCode,
-
-            hostname:
-                hostname ||
-                ""
+            hostname: targetHostname
         };
 
-
-        let unit =
-            await NetworkUnit.findOne(
-                filter
-            );
-
+        let unit = await NetworkUnit.findOne(filter);
 
         if (!unit) {
-
-            unit =
-                await NetworkUnit.create({
-
+            try {
+                unit = await NetworkUnit.create({
                     customerId,
-
-                    purchaseOrderId:
-                        purchaseOrderId ||
-                        null,
-
+                    purchaseOrderId: targetPOId,
                     unitCode,
-
-                    hostname:
-                        hostname ||
-                        "",
-
-                    radioConfiguration:
-                        radioConfiguration ||
-                        "",
-
-                    additionalFields:
-                        additionalFields ||
-                        {}
+                    hostname: targetHostname,
+                    radioConfiguration: radioConfiguration || "",
+                    additionalFields: additionalFields || {}
                 });
-
-
-            return unit;
+                return unit;
+            } catch (err) {
+                if (err.code === 11000) {
+                    unit = await NetworkUnit.findOne(filter);
+                } else {
+                    throw err;
+                }
+            }
         }
 
+        if (unit) {
+            let changed = false;
 
-        let changed =
-            false;
+            if (radioConfiguration && !unit.radioConfiguration) {
+                unit.radioConfiguration = radioConfiguration;
+                changed = true;
+            }
 
-
-        if (
-            radioConfiguration &&
-            !unit.radioConfiguration
-        ) {
-
-            unit.radioConfiguration =
-                radioConfiguration;
-
-            changed = true;
-        }
-
-
-        if (
-            additionalFields &&
-            Object.keys(
-                additionalFields
-            ).length > 0
-        ) {
-
-            unit.additionalFields =
-                {
-                    ...(unit.additionalFields ||
-                        {}),
+            if (
+                additionalFields &&
+                Object.keys(additionalFields).length > 0
+            ) {
+                unit.additionalFields = {
+                    ...(unit.additionalFields || {}),
                     ...additionalFields
                 };
+                changed = true;
+            }
 
-            changed = true;
+            if (changed) {
+                await unit.save();
+            }
         }
-
-
-        if (changed) {
-            await unit.save();
-        }
-
 
         return unit;
     };
