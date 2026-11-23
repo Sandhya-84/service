@@ -45,6 +45,11 @@ const purchaseOrderSchema =
                     Date
             },
 
+            expiryDate: {
+                type:
+                    Date
+            },
+
 
             nextRenewalDate: {
                 type:

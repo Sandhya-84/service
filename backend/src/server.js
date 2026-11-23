@@ -11,8 +11,18 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import renewalHistoryRoutes from "./routes/renewalHistoryRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
 import activityLogRoutes from "./routes/activityLogRoutes.js";
+import assistantRoutes from "./routes/assistantRoutes.js";
+
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
+if (!process.env.MONGO_URI) {
+    dotenv.config({ path: path.resolve(__dirname, "../.env") });
+}
 
 const app = express();
 
@@ -35,6 +45,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/renewal-history", renewalHistoryRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/activity-logs", activityLogRoutes);
+app.use("/api/assistant", assistantRoutes);
 
 app.get("/", (req, res) => {
     res.json({
