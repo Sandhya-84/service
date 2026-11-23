@@ -10,6 +10,7 @@ import {
 } from "react-router-dom";
 
 import {
+    Sparkles,
     LayoutDashboard,
     Building2,
     UserPlus,
@@ -81,6 +82,12 @@ const DashboardHeader = ({ onLogout }) => {
 
 
     const menuItems = [
+
+        {
+            label: "Command Center",
+            path: "/",
+            icon: Sparkles
+        },
 
         {
             label: "Dashboard",

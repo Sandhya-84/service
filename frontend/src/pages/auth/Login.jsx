@@ -54,7 +54,7 @@ const Login = () => {
                 localStorage.getItem("token")
             );
 
-            navigate("/dashboard");
+            navigate("/");
 
         } catch (error) {
             console.error("Login error:", error);

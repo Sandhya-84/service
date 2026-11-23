@@ -27,6 +27,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 import DashboardLayout from "./pages/dashboard/DashboardLayout";
 import CustomerDirectory from "./pages/customer/CustomerDirectory";
+import HomeCommand from "./pages/command/HomeCommand";
 
 const App = () => {
 
@@ -36,15 +37,14 @@ const App = () => {
 
             <Routes>
 
-                {/* DEFAULT */}
+                {/* WINDOW 1: COMMAND CENTER LANDING PAGE */}
 
                 <Route
                     path="/"
                     element={
-                        <Navigate
-                            to="/login"
-                            replace
-                        />
+                        <ProtectedRoute>
+                            <HomeCommand />
+                        </ProtectedRoute>
                     }
                 />
 
