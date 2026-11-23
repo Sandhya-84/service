@@ -1,0 +1,3 @@
+{"t":{"$date":"2026-11-23T15:46:06.764Z"},"s":"I","c":"MONGODB-MCP","id":1000004,"ctx":"server","msg":"Server started with transport StdioServerTransport"}
+{"t":{"$date":"2026-11-23T15:46:06.802Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing connect with args: [{\"connectionStringOrClusterName\":\"<mongodb uri>"}
+{"t":{"$date":"2026-11-23T15:46:07.058Z"},"s":"E","c":"MONGODB-MCP","id":1000000,"ctx":"tool","msg":"Error executing connect: MongoNetworkError: getaddrinfo ENOTFOUND ac-sdfuqli-shard-00-00.wfd2gj3.mongodb.net"}

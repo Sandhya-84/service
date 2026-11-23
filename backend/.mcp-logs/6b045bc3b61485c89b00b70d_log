@@ -1,0 +1,5 @@
+{"t":{"$date":"2026-11-23T15:29:07.149Z"},"s":"I","c":"MONGODB-MCP","id":1000004,"ctx":"server","msg":"Server started with transport StdioServerTransport"}
+{"t":{"$date":"2026-11-23T15:29:07.164Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing count with args: [{\"database\":\"network_support_tracker\",\"collection\":\"customers\"},{\"signal\":{},\"requestId\":1}]"}
+{"t":{"$date":"2026-11-23T15:29:07.256Z"},"s":"E","c":"MONGODB-MCP","id":1000000,"ctx":"tool","msg":"Error executing count: MongoNetworkError: getaddrinfo ENOTFOUND ac-sdfuqli-shard-00-00.wfd2gj3.mongodb.net"}
+{"t":{"$date":"2026-11-23T15:29:07.261Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing find with args: [{\"database\":\"network_support_tracker\",\"collection\":\"customers\",\"limit\":2},{\"signal\":{},\"requestId\":2}]"}
+{"t":{"$date":"2026-11-23T15:29:07.295Z"},"s":"E","c":"MONGODB-MCP","id":1000000,"ctx":"tool","msg":"Error executing find: MongoNetworkError: getaddrinfo ENOTFOUND ac-sdfuqli-shard-00-00.wfd2gj3.mongodb.net"}

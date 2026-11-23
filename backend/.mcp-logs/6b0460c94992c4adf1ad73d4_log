@@ -1,0 +1,3 @@
+{"t":{"$date":"2026-11-23T15:50:33.312Z"},"s":"I","c":"MONGODB-MCP","id":1000004,"ctx":"server","msg":"Server started with transport StdioServerTransport"}
+{"t":{"$date":"2026-11-23T15:50:33.332Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing connect with args: [{\"connectionStringOrClusterName\":\"<mongodb uri>"}
+{"t":{"$date":"2026-11-23T15:50:34.543Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing find with args: [{\"database\":\"network_support_tracker\",\"collection\":\"purchaseorders\",\"filter\":{},\"limit\":2},{\"signal\":{},\"requestId\":2}]"}
