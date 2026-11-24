@@ -1,5 +1,11 @@
 import express from "express";
 import mcpMongoManager from "../services/mcpMongoClient.js";
+import Customer from "../models/Customer.js";
+import PurchaseOrder from "../models/PurchaseOrder.js";
+import NetworkUnit from "../models/NetworkUnit.js";
+import EvalValue from "../models/EvalValue.js";
+import { Anthropic } from "@anthropic-ai/sdk";
+import { GoogleGenAI } from "@google/genai";
 import { transferNaturalLanguageQuery } from "../services/nlpService.js";
 
 const router = express.Router();
@@ -13,26 +19,34 @@ const escapeRegex = (str) => (str || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * Fetch lookup maps for Customer IDs and PO IDs to enrich documents
  */
 const fetchEntityMaps = async () => {
-    const [custRes, poRes] = await Promise.all([
-        mcpMongoManager.find({ collection: "customers", limit: 1000 }),
-        mcpMongoManager.find({ collection: "purchaseorders", limit: 1000 })
-    ]);
+    let allCustomers = [];
+    let allPOs = [];
+
+    try {
+        allCustomers = await Customer.find({}).limit(2000).lean();
+    } catch {
+        const custRes = await mcpMongoManager.find({ collection: "customers", limit: 2000 }).catch(() => null);
+        allCustomers = custRes?.documents || [];
+    }
+
+    try {
+        allPOs = await PurchaseOrder.find({}).limit(2000).lean();
+    } catch {
+        const poRes = await mcpMongoManager.find({ collection: "purchaseorders", limit: 2000 }).catch(() => null);
+        allPOs = poRes?.documents || [];
+    }
 
     const customerMap = new Map();
-    if (custRes?.documents) {
-        for (const c of custRes.documents) {
-            customerMap.set(String(c._id), c.name);
-        }
+    for (const c of allCustomers) {
+        customerMap.set(String(c._id), c.name);
     }
 
     const poMap = new Map();
-    if (poRes?.documents) {
-        for (const p of poRes.documents) {
-            poMap.set(String(p._id), p.poNumber);
-        }
+    for (const p of allPOs) {
+        poMap.set(String(p._id), p.poNumber);
     }
 
-    return { customerMap, poMap, allCustomers: custRes?.documents || [] };
+    return { customerMap, poMap, allCustomers };
 };
 
 /**
@@ -116,6 +130,673 @@ const formatNetworkUnit = (unit, customerMap, poMap) => {
     };
 };
 
+// =========================================================================
+// 4 CORE READ-ONLY MONGOOSE QUERY HANDLERS
+// =========================================================================
+
+/**
+ * 1. get_customer_dossier
+ * Retrieves customer profile, purchase orders, network units, and eval lab records.
+ */
+async function runGetCustomerDossier(args, { customerMap, poMap, allCustomers }) {
+    const companyName = (args.companyName || args.customerName || args.company || "").trim();
+    const customerId = args.customerId ? String(args.customerId) : null;
+
+    let targetCustomer = null;
+
+    if (customerId) {
+        targetCustomer = allCustomers.find(c => String(c._id) === customerId);
+        if (!targetCustomer) {
+            try {
+                targetCustomer = await Customer.findById(customerId).lean();
+            } catch {
+                // Ignore find error
+            }
+        }
+    }
+
+    if (!targetCustomer && companyName) {
+        const lowerComp = companyName.toLowerCase();
+        // Exact match first
+        targetCustomer = allCustomers.find(c => (c.name || "").toLowerCase() === lowerComp);
+        // Substring / regex match second
+        if (!targetCustomer) {
+            targetCustomer = allCustomers.find(c => (c.name || "").toLowerCase().includes(lowerComp) || lowerComp.includes((c.name || "").toLowerCase()));
+        }
+        if (!targetCustomer) {
+            try {
+                targetCustomer = await Customer.findOne({ name: { $regex: new RegExp(escapeRegex(companyName), "i") } }).lean();
+            } catch {
+                // Ignore find error
+            }
+        }
+    }
+
+    if (!targetCustomer) {
+        return {
+            success: true,
+            summary: `No customer record found matching "${companyName || "the specified customer"}". Try searching by exact name or consult the Customer Directory.`,
+            records: [],
+            type: "customer_dossier",
+            queryType: "company",
+            customers: [],
+            purchaseOrders: [],
+            networkUnits: [],
+            evalValues: [],
+            count: { customers: 0, purchaseOrders: 0, networkUnits: 0, evalValues: 0, total: 0 }
+        };
+    }
+
+    const cId = targetCustomer._id;
+    const cIdStr = String(cId);
+    const cName = targetCustomer.name;
+
+    const [rawPOs, rawUnits, rawEvals] = await Promise.all([
+        PurchaseOrder.find({
+            $or: [{ customerId: cId }, { customerId: cIdStr }]
+        }).sort({ expiryDate: 1, supportExpiryDate: 1 }).lean().catch(() =>
+            mcpMongoManager.aggregate({
+                collection: "purchaseorders",
+                pipeline: [
+                    { $match: { $expr: { $eq: [{ $toString: "$customerId" }, cIdStr] } } },
+                    { $sort: { expiryDate: 1 } },
+                    { $limit: 200 }
+                ]
+            }).then(r => r?.documents || [])
+        ),
+        NetworkUnit.find({
+            $or: [{ customerId: cId }, { customerId: cIdStr }]
+        }).lean().catch(() =>
+            mcpMongoManager.aggregate({
+                collection: "networkunits",
+                pipeline: [
+                    { $match: { $expr: { $eq: [{ $toString: "$customerId" }, cIdStr] } } },
+                    { $limit: 300 }
+                ]
+            }).then(r => r?.documents || [])
+        ),
+        EvalValue.find({
+            customer: { $regex: new RegExp(escapeRegex(cName), "i") }
+        }).lean().catch(() =>
+            mcpMongoManager.find({
+                collection: "evalvalues",
+                filter: { customer: { $regex: escapeRegex(cName), $options: "i" } },
+                limit: 100
+            }).then(r => r?.documents || [])
+        )
+    ]);
+
+    const formattedPOs = (rawPOs || []).map(po => formatPurchaseOrder(po, customerMap));
+    const formattedUnits = (rawUnits || []).map(u => formatNetworkUnit(u, customerMap, poMap));
+    const formattedEvals = rawEvals || [];
+
+    let activeCount = 0;
+    let expiringCount = 0;
+    let expiredCount = 0;
+    formattedPOs.forEach(p => {
+        if (p.status === "active") activeCount++;
+        else if (p.status === "expiring") expiringCount++;
+        else if (p.status === "expired") expiredCount++;
+    });
+
+    const assignedUnits = formattedUnits.filter(u => u.hasPO).length;
+    const unassignedUnits = formattedUnits.length - assignedUnits;
+
+    const summary = `Executive Dossier for ${cName}: Currently managing ${formattedPOs.length} Purchase Order${formattedPOs.length === 1 ? "" : "s"} (${activeCount} active in good standing, ${expiringCount} expiring soon, ${expiredCount} expired), with ${formattedUnits.length} Network Unit${formattedUnits.length === 1 ? "" : "s"} deployed across the fleet (${assignedUnits} linked to active orders, ${unassignedUnits} unassigned)${formattedEvals.length > 0 ? `, and ${formattedEvals.length} unit(s) in lab evaluation` : ""}. Support status is healthy.`;
+
+    return {
+        success: true,
+        summary,
+        records: formattedPOs,
+        type: "customer_dossier",
+        queryType: "company",
+        company: cName,
+        companyDetails: {
+            customer: targetCustomer,
+            stats: {
+                totalPOs: formattedPOs.length,
+                activePOs: activeCount,
+                expiringPOs: expiringCount,
+                expiredPOs: expiredCount,
+                totalUnits: formattedUnits.length,
+                assignedUnits,
+                unassignedUnits
+            }
+        },
+        customers: [targetCustomer],
+        purchaseOrders: formattedPOs,
+        networkUnits: formattedUnits,
+        evalValues: formattedEvals,
+        count: {
+            customers: 1,
+            purchaseOrders: formattedPOs.length,
+            networkUnits: formattedUnits.length,
+            evalValues: formattedEvals.length,
+            total: formattedPOs.length + formattedUnits.length + formattedEvals.length
+        }
+    };
+}
+
+/**
+ * 2. query_purchase_orders
+ * Query and filter purchase orders by customer, status, days remaining, or PO number.
+ */
+async function runQueryPurchaseOrders(args, { customerMap, poMap, allCustomers }) {
+    const { customerName, status, maxDaysRemaining, poNumber, limit = 100 } = args;
+
+    let targetCustomer = null;
+    if (customerName) {
+        const lowerComp = customerName.toLowerCase();
+        targetCustomer = allCustomers.find(c => (c.name || "").toLowerCase().includes(lowerComp));
+        if (!targetCustomer) {
+            try {
+                targetCustomer = await Customer.findOne({ name: { $regex: new RegExp(escapeRegex(customerName), "i") } }).lean();
+            } catch {
+                // Ignore
+            }
+        }
+    }
+
+    const query = {};
+    if (targetCustomer) {
+        query.$or = [{ customerId: targetCustomer._id }, { customerId: String(targetCustomer._id) }];
+    }
+    if (poNumber) {
+        query.poNumber = { $regex: new RegExp(escapeRegex(poNumber), "i") };
+    }
+
+    let rawPOs = [];
+    try {
+        rawPOs = await PurchaseOrder.find(query).limit(limit || 200).lean();
+    } catch {
+        const mcpQuery = {};
+        if (targetCustomer) mcpQuery.customerId = targetCustomer._id;
+        if (poNumber) mcpQuery.poNumber = { $regex: escapeRegex(poNumber), $options: "i" };
+        const res = await mcpMongoManager.find({ collection: "purchaseorders", filter: mcpQuery, limit: limit || 200 }).catch(() => null);
+        rawPOs = res?.documents || [];
+    }
+
+    let formattedPOs = rawPOs.map(po => formatPurchaseOrder(po, customerMap));
+
+    // Status filtering in JS
+    const days = typeof maxDaysRemaining === "number" ? maxDaysRemaining : 30;
+    if (status === "active") {
+        formattedPOs = formattedPOs.filter(p => p.status === "active");
+    } else if (status === "expiring" || typeof maxDaysRemaining === "number") {
+        formattedPOs = formattedPOs.filter(p =>
+            p.status === "expiring" || (p.daysRemaining !== null && p.daysRemaining >= 0 && p.daysRemaining <= days)
+        ).sort((a, b) => (a.daysRemaining || 0) - (b.daysRemaining || 0));
+    } else if (status === "expired") {
+        formattedPOs = formattedPOs.filter(p => p.status === "expired" || (p.daysRemaining !== null && p.daysRemaining < 0))
+            .sort((a, b) => (a.daysRemaining || 0) - (b.daysRemaining || 0));
+    } else if (status === "no-date") {
+        formattedPOs = formattedPOs.filter(p => p.status === "no-date");
+    }
+
+    // If searching by PO number, fetch linked network units
+    let linkedUnits = [];
+    if (poNumber && formattedPOs.length > 0) {
+        const poIds = formattedPOs.map(p => p._id);
+        const poIdStrs = poIds.map(String);
+        try {
+            const rawUnits = await NetworkUnit.find({
+                $or: [{ purchaseOrderId: { $in: poIds } }, { purchaseOrderId: { $in: poIdStrs } }]
+            }).limit(100).lean();
+            linkedUnits = (rawUnits || []).map(u => formatNetworkUnit(u, customerMap, poMap));
+        } catch {
+            // Ignore
+        }
+    }
+
+    let summary = `Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"}.`;
+    if (status === "expiring" || typeof maxDaysRemaining === "number") {
+        summary = formattedPOs.length === 0
+            ? `No purchase orders found expiring within ${days} days.`
+            : `Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"} expiring within ${days} days.`;
+    } else if (status === "expired") {
+        summary = formattedPOs.length === 0
+            ? "No expired purchase orders found across the fleet."
+            : `Found ${formattedPOs.length} expired purchase order${formattedPOs.length === 1 ? "" : "s"} past their support end date.`;
+    } else if (status === "active") {
+        summary = formattedPOs.length === 0
+            ? "No active contracts found."
+            : `Found ${formattedPOs.length} active purchase order${formattedPOs.length === 1 ? "" : "s"} with valid support coverage in good standing.`;
+    } else if (targetCustomer) {
+        summary = `Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"} for ${targetCustomer.name}.`;
+    } else if (poNumber) {
+        summary = `Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"} matching "${poNumber}" with ${linkedUnits.length} linked network unit${linkedUnits.length === 1 ? "" : "s"}.`;
+    }
+
+    return {
+        success: true,
+        summary,
+        records: formattedPOs,
+        type: "purchase_orders",
+        queryType: "purchase_orders",
+        purchaseOrders: formattedPOs,
+        networkUnits: linkedUnits,
+        customers: targetCustomer ? [targetCustomer] : [],
+        evalValues: [],
+        count: {
+            customers: targetCustomer ? 1 : 0,
+            purchaseOrders: formattedPOs.length,
+            networkUnits: linkedUnits.length,
+            evalValues: 0,
+            total: formattedPOs.length + linkedUnits.length
+        }
+    };
+}
+
+/**
+ * 3. query_network_units
+ * Query network hardware units by customer, PO assignment, RMA defect status, hostname, or unit code.
+ */
+async function runQueryNetworkUnits(args, { customerMap, poMap, allCustomers }) {
+    const { customerName, hasPO, isRMA, hostname, unitCode, limit = 100 } = args;
+
+    let targetCustomer = null;
+    if (customerName) {
+        const lowerComp = customerName.toLowerCase();
+        targetCustomer = allCustomers.find(c => (c.name || "").toLowerCase().includes(lowerComp));
+        if (!targetCustomer) {
+            try {
+                targetCustomer = await Customer.findOne({ name: { $regex: new RegExp(escapeRegex(customerName), "i") } }).lean();
+            } catch {
+                // Ignore
+            }
+        }
+    }
+
+    const query = {};
+    if (targetCustomer) {
+        query.$or = [{ customerId: targetCustomer._id }, { customerId: String(targetCustomer._id) }];
+    }
+    if (hasPO === false) {
+        query.purchaseOrderId = null;
+    } else if (hasPO === true) {
+        query.purchaseOrderId = { $ne: null, $exists: true };
+    }
+    if (isRMA === true) {
+        query.$or = [
+            { hostname: { $regex: "rma", $options: "i" } },
+            { unitCode: { $regex: "rma", $options: "i" } }
+        ];
+    }
+    if (hostname) {
+        query.hostname = { $regex: new RegExp(escapeRegex(hostname), "i") };
+    }
+    if (unitCode) {
+        query.unitCode = { $regex: new RegExp(escapeRegex(unitCode), "i") };
+    }
+
+    let rawUnits = [];
+    try {
+        rawUnits = await NetworkUnit.find(query).limit(limit || 200).lean();
+    } catch {
+        const res = await mcpMongoManager.find({ collection: "networkunits", filter: query, limit: limit || 200 }).catch(() => null);
+        rawUnits = res?.documents || [];
+    }
+
+    const formattedUnits = (rawUnits || []).map(u => formatNetworkUnit(u, customerMap, poMap));
+
+    let summary = `Found ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"}.`;
+    if (isRMA) {
+        summary = formattedUnits.length === 0
+            ? "Hardware Incident Report: No RMA or defective units found across the fleet."
+            : `Hardware Incident Report: Found ${formattedUnits.length} RMA unit${formattedUnits.length === 1 ? "" : "s"} flagged for defect inspection or hardware replacement.`;
+    } else if (hasPO === false) {
+        summary = formattedUnits.length === 0
+            ? "Fleet Audit: All deployed network units are currently linked to active Purchase Orders."
+            : `Fleet Audit Analysis: Identified ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"} operating without an assigned Purchase Order.`;
+    } else if (targetCustomer) {
+        summary = `Found ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"} deployed for ${targetCustomer.name}.`;
+    } else if (hostname || unitCode) {
+        summary = `Found ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"} matching "${hostname || unitCode}".`;
+    }
+
+    return {
+        success: true,
+        summary,
+        records: formattedUnits,
+        type: "network_units",
+        queryType: "network_units",
+        customers: targetCustomer ? [targetCustomer] : [],
+        purchaseOrders: [],
+        networkUnits: formattedUnits,
+        evalValues: [],
+        count: {
+            customers: targetCustomer ? 1 : 0,
+            purchaseOrders: 0,
+            networkUnits: formattedUnits.length,
+            evalValues: 0,
+            total: formattedUnits.length
+        }
+    };
+}
+
+/**
+ * 4. get_system_summary
+ * Computes fleet-wide counts: total customers, POs, units, expiring, expired, missing PO, RMA.
+ */
+async function runGetSystemSummary() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const thirtyDaysFromNow = new Date(today);
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    thirtyDaysFromNow.setHours(23, 59, 59, 999);
+
+    const [
+        custCount,
+        poCount,
+        unitCount,
+        expiringCount,
+        expiredCount,
+        missingPOCount,
+        rmaCount
+    ] = await Promise.all([
+        Customer.countDocuments().catch(() => mcpMongoManager.count({ collection: "customers" }).then(r => r?.count || 0)),
+        PurchaseOrder.countDocuments().catch(() => mcpMongoManager.count({ collection: "purchaseorders" }).then(r => r?.count || 0)),
+        NetworkUnit.countDocuments().catch(() => mcpMongoManager.count({ collection: "networkunits" }).then(r => r?.count || 0)),
+        PurchaseOrder.countDocuments({
+            $or: [
+                { expiryDate: { $gte: today, $lte: thirtyDaysFromNow } },
+                { supportExpiryDate: { $gte: today, $lte: thirtyDaysFromNow } }
+            ]
+        }).catch(() => mcpMongoManager.count({
+            collection: "purchaseorders",
+            query: {
+                $or: [
+                    { expiryDate: { $gte: today, $lte: thirtyDaysFromNow } },
+                    { supportExpiryDate: { $gte: today, $lte: thirtyDaysFromNow } }
+                ]
+            }
+        }).then(r => r?.count || 0)),
+        PurchaseOrder.countDocuments({
+            $or: [
+                { expiryDate: { $lt: today } },
+                { supportExpiryDate: { $lt: today } }
+            ]
+        }).catch(() => mcpMongoManager.count({
+            collection: "purchaseorders",
+            query: {
+                $or: [
+                    { expiryDate: { $lt: today } },
+                    { supportExpiryDate: { $lt: today } }
+                ]
+            }
+        }).then(r => r?.count || 0)),
+        NetworkUnit.countDocuments({
+            $or: [{ purchaseOrderId: null }, { purchaseOrderId: { $exists: false } }]
+        }).catch(() => mcpMongoManager.count({
+            collection: "networkunits",
+            query: {
+                $or: [{ purchaseOrderId: null }, { purchaseOrderId: { $exists: false } }]
+            }
+        }).then(r => r?.count || 0)),
+        NetworkUnit.countDocuments({
+            $or: [
+                { hostname: { $regex: "rma", $options: "i" } },
+                { unitCode: { $regex: "rma", $options: "i" } }
+            ]
+        }).catch(() => mcpMongoManager.count({
+            collection: "networkunits",
+            query: {
+                $or: [
+                    { hostname: { $regex: "rma", $options: "i" } },
+                    { unitCode: { $regex: "rma", $options: "i" } }
+                ]
+            }
+        }).then(r => r?.count || 0))
+    ]);
+
+    const c = custCount || 0;
+    const p = poCount || 0;
+    const u = unitCount || 0;
+    const exp = expiringCount || 0;
+    const past = expiredCount || 0;
+    const noPo = missingPOCount || 0;
+    const rma = rmaCount || 0;
+
+    const summary = `Executive Fleet Briefing: Currently monitoring ${c} customer account${c === 1 ? "" : "s"}, ${p} purchase order${p === 1 ? "" : "s"} (${exp} expiring in 30 days, ${past} expired contracts), and ${u} total network unit${u === 1 ? "" : "s"} (${noPo} unlinked hardware without PO, ${rma} RMA flagged units).`;
+
+    return {
+        success: true,
+        summary,
+        records: [],
+        type: "system_summary",
+        queryType: "system_stats",
+        systemStats: {
+            customers: c,
+            purchaseOrders: p,
+            networkUnits: u,
+            expiring: exp,
+            expired: past,
+            missingPO: noPo,
+            rma
+        },
+        count: {
+            customers: c,
+            purchaseOrders: p,
+            networkUnits: u,
+            evalValues: 0,
+            total: c + p + u
+        },
+        customers: [],
+        purchaseOrders: [],
+        networkUnits: [],
+        evalValues: []
+    };
+}
+
+/**
+ * Fallback General Search across all collections
+ */
+async function runGeneralSearch(queryText, { customerMap, poMap }) {
+    const safeRegex = escapeRegex(queryText);
+    const regex = new RegExp(safeRegex, "i");
+
+    const [custRes, poRes, unitRes, evalRes] = await Promise.all([
+        Customer.find({ name: { $regex: regex } }).limit(20).lean().catch(() =>
+            mcpMongoManager.find({ collection: "customers", filter: { name: { $regex: safeRegex, $options: "i" } }, limit: 20 }).then(r => r?.documents || [])
+        ),
+        PurchaseOrder.find({
+            $or: [{ poNumber: { $regex: regex } }, { invoiceNumber: { $regex: regex } }, { notes: { $regex: regex } }]
+        }).limit(50).lean().catch(() =>
+            mcpMongoManager.find({
+                collection: "purchaseorders",
+                filter: { $or: [{ poNumber: { $regex: safeRegex, $options: "i" } }, { invoiceNumber: { $regex: safeRegex, $options: "i" } }] },
+                limit: 50
+            }).then(r => r?.documents || [])
+        ),
+        NetworkUnit.find({
+            $or: [{ unitCode: { $regex: regex } }, { hostname: { $regex: regex } }, { radioConfiguration: { $regex: regex } }]
+        }).limit(50).lean().catch(() =>
+            mcpMongoManager.find({
+                collection: "networkunits",
+                filter: { $or: [{ unitCode: { $regex: safeRegex, $options: "i" } }, { hostname: { $regex: safeRegex, $options: "i" } }] },
+                limit: 50
+            }).then(r => r?.documents || [])
+        ),
+        EvalValue.find({
+            $or: [{ customer: { $regex: regex } }, { unit: { $regex: regex } }, { hostname: { $regex: regex } }]
+        }).limit(20).lean().catch(() =>
+            mcpMongoManager.find({
+                collection: "evalvalues",
+                filter: { $or: [{ customer: { $regex: safeRegex, $options: "i" } }, { unit: { $regex: safeRegex, $options: "i" } }] },
+                limit: 20
+            }).then(r => r?.documents || [])
+        )
+    ]);
+
+    const formattedPOs = (poRes || []).map(p => formatPurchaseOrder(p, customerMap));
+    const formattedUnits = (unitRes || []).map(u => formatNetworkUnit(u, customerMap, poMap));
+    const matchedCustomers = custRes || [];
+    const matchedEvals = evalRes || [];
+
+    const totalFound = matchedCustomers.length + formattedPOs.length + formattedUnits.length + matchedEvals.length;
+    const summary = totalFound === 0
+        ? `No records matched "${queryText}". Try asking about specific customers (e.g. "Capgemini"), "expiring in 30 days", "units without po", or "system stats".`
+        : `Found ${totalFound} total record${totalFound === 1 ? "" : "s"} (${matchedCustomers.length} customer${matchedCustomers.length === 1 ? "" : "s"}, ${formattedPOs.length} PO${formattedPOs.length === 1 ? "" : "s"}, ${formattedUnits.length} unit${formattedUnits.length === 1 ? "" : "s"}).`;
+
+    return {
+        success: true,
+        summary,
+        records: formattedPOs.length > 0 ? formattedPOs : formattedUnits,
+        type: "general_search",
+        queryType: "general_search",
+        customers: matchedCustomers,
+        purchaseOrders: formattedPOs,
+        networkUnits: formattedUnits,
+        evalValues: matchedEvals,
+        count: {
+            customers: matchedCustomers.length,
+            purchaseOrders: formattedPOs.length,
+            networkUnits: formattedUnits.length,
+            evalValues: matchedEvals.length,
+            total: totalFound
+        }
+    };
+}
+
+/**
+ * Dispatcher to execute the selected tool
+ */
+async function executeTool(toolName, toolArgs, context) {
+    switch (toolName) {
+        case "get_customer_dossier":
+            return await runGetCustomerDossier(toolArgs, context);
+        case "query_purchase_orders":
+            return await runQueryPurchaseOrders(toolArgs, context);
+        case "query_network_units":
+            return await runQueryNetworkUnits(toolArgs, context);
+        case "get_system_summary":
+            return await runGetSystemSummary();
+        default:
+            return await runGeneralSearch(toolArgs.query || "", context);
+    }
+}
+
+// =========================================================================
+// TOOL DEFINITIONS FOR CLAUDE & GEMINI
+// =========================================================================
+
+const CLAUDE_TOOLS = [
+    {
+        name: "get_customer_dossier",
+        description: "Retrieve complete profile for a customer or company, including all associated purchase orders, deployed network hardware units, evaluation lab units, and contract support status.",
+        input_schema: {
+            type: "object",
+            properties: {
+                companyName: {
+                    type: "string",
+                    description: "Name of the company or customer to look up (e.g. Capgemini, Comcast, Juniper, TataElxsi, Altice)."
+                }
+            },
+            required: ["companyName"]
+        }
+    },
+    {
+        name: "query_purchase_orders",
+        description: "Search and filter purchase orders across the fleet by customer, status (active, expiring, expired, no-date), days remaining, or PO number.",
+        input_schema: {
+            type: "object",
+            properties: {
+                customerName: { type: "string", description: "Filter by customer/company name." },
+                status: { type: "string", enum: ["active", "expiring", "expired", "no-date", "all"], description: "Contract status filter." },
+                maxDaysRemaining: { type: "number", description: "Filter POs expiring within this number of days (e.g. 30, 60)." },
+                poNumber: { type: "string", description: "Specific purchase order number." },
+                limit: { type: "number", description: "Max records to return." }
+            }
+        }
+    },
+    {
+        name: "query_network_units",
+        description: "Query and filter network hardware units by customer, PO assignment (hasPO: false for missing/unassigned PO), RMA defect status, hostname, or unit code.",
+        input_schema: {
+            type: "object",
+            properties: {
+                customerName: { type: "string", description: "Filter by customer/company name." },
+                hasPO: { type: "boolean", description: "Set false to find units without an assigned purchase order (missing PO / unassigned). Set true for assigned units." },
+                isRMA: { type: "boolean", description: "Set true for defective / RMA units." },
+                hostname: { type: "string", description: "Filter by hostname." },
+                unitCode: { type: "string", description: "Filter by unit code (e.g. CT523c)." },
+                limit: { type: "number", description: "Max records to return." }
+            }
+        }
+    },
+    {
+        name: "get_system_summary",
+        description: "Get high-level system overview stats: total customers, total purchase orders, contracts expiring in 30 days, expired POs, unassigned hardware units, and total units.",
+        input_schema: {
+            type: "object",
+            properties: {}
+        }
+    }
+];
+
+const GEMINI_TOOLS = [
+    {
+        functionDeclarations: [
+            {
+                name: "get_customer_dossier",
+                description: "Retrieve complete profile for a customer or company, including all associated purchase orders, deployed network hardware units, evaluation lab units, and contract support status.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        companyName: {
+                            type: "STRING",
+                            description: "Name of the company or customer to look up (e.g. Capgemini, Comcast, Juniper, TataElxsi, Altice)."
+                        }
+                    },
+                    required: ["companyName"]
+                }
+            },
+            {
+                name: "query_purchase_orders",
+                description: "Search and filter purchase orders across the fleet by customer, status (active, expiring, expired, no-date), days remaining, or PO number.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        customerName: { type: "STRING", description: "Filter by customer/company name." },
+                        status: { type: "STRING", description: "Contract status: active, expiring, expired, no-date, or all." },
+                        maxDaysRemaining: { type: "NUMBER", description: "Filter POs expiring within this number of days (e.g. 30, 60)." },
+                        poNumber: { type: "STRING", description: "Specific purchase order number." },
+                        limit: { type: "NUMBER", description: "Max records to return." }
+                    }
+                }
+            },
+            {
+                name: "query_network_units",
+                description: "Query and filter network hardware units by customer, PO assignment (hasPO: false for missing/unassigned PO), RMA defect status, hostname, or unit code.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {
+                        customerName: { type: "STRING", description: "Filter by customer/company name." },
+                        hasPO: { type: "BOOLEAN", description: "Set false to find units without an assigned purchase order (missing PO / unassigned). Set true for assigned units." },
+                        isRMA: { type: "BOOLEAN", description: "Set true for defective / RMA units." },
+                        hostname: { type: "STRING", description: "Filter by hostname." },
+                        unitCode: { type: "STRING", description: "Filter by unit code (e.g. CT523c)." },
+                        limit: { type: "NUMBER", description: "Max records to return." }
+                    }
+                }
+            },
+            {
+                name: "get_system_summary",
+                description: "Get high-level system overview stats: total customers, total purchase orders, contracts expiring in 30 days, expired POs, unassigned hardware units, and total units.",
+                parameters: {
+                    type: "OBJECT",
+                    properties: {}
+                }
+            }
+        ]
+    }
+];
+
+// =========================================================================
+// API ROUTES
+// =========================================================================
+
 /**
  * GET /api/assistant/health
  * Returns live MCP server connection status and summary counts
@@ -123,63 +804,7 @@ const formatNetworkUnit = (unit, customerMap, poMap) => {
 router.get("/health", async (req, res) => {
     try {
         const mcpStatus = mcpMongoManager.getStatus();
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const thirtyDaysFromNow = new Date(today);
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-        thirtyDaysFromNow.setHours(23, 59, 59, 999);
-
-        // Fetch exact counts across collections via MCP count
-        const [
-            custCountRes,
-            poCountRes,
-            unitCountRes,
-            expiringRes,
-            expiredRes,
-            missingPORes
-        ] = await Promise.all([
-            mcpMongoManager.count({ collection: "customers" }),
-            mcpMongoManager.count({ collection: "purchaseorders" }),
-            mcpMongoManager.count({ collection: "networkunits" }),
-            mcpMongoManager.count({
-                collection: "purchaseorders",
-                query: {
-                    $or: [
-                        { expiryDate: { $gte: today, $lte: thirtyDaysFromNow } },
-                        { supportExpiryDate: { $gte: today, $lte: thirtyDaysFromNow } }
-                    ]
-                }
-            }),
-            mcpMongoManager.count({
-                collection: "purchaseorders",
-                query: {
-                    $or: [
-                        { expiryDate: { $lt: today } },
-                        { supportExpiryDate: { $lt: today } }
-                    ]
-                }
-            }),
-            mcpMongoManager.count({
-                collection: "networkunits",
-                query: {
-                    $or: [
-                        { purchaseOrderId: null },
-                        { purchaseOrderId: { $exists: false } }
-                    ]
-                }
-            })
-        ]);
-
-        const counts = {
-            totalCustomers: custCountRes?.count ?? 0,
-            totalPOs: poCountRes?.count ?? 0,
-            expiringWithin30Days: expiringRes?.count ?? 0,
-            expired: expiredRes?.count ?? 0,
-            totalUnits: unitCountRes?.count ?? 0,
-            missingPO: missingPORes?.count ?? 0
-        };
+        const summaryData = await runGetSystemSummary();
 
         return res.status(200).json({
             success: true,
@@ -192,14 +817,21 @@ router.get("/health", async (req, res) => {
                 database: mcpStatus.database,
                 lastError: mcpStatus.lastError
             },
-            counts,
+            counts: {
+                totalCustomers: summaryData.systemStats.customers,
+                totalPOs: summaryData.systemStats.purchaseOrders,
+                expiringWithin30Days: summaryData.systemStats.expiring,
+                expired: summaryData.systemStats.expired,
+                totalUnits: summaryData.systemStats.networkUnits,
+                missingPO: summaryData.systemStats.missingPO
+            },
             summary: {
-                customers: counts.totalCustomers,
-                purchaseOrders: counts.totalPOs,
-                networkUnits: counts.totalUnits,
-                expiring: counts.expiringWithin30Days,
-                expired: counts.expired,
-                missingPO: counts.missingPO
+                customers: summaryData.systemStats.customers,
+                purchaseOrders: summaryData.systemStats.purchaseOrders,
+                networkUnits: summaryData.systemStats.networkUnits,
+                expiring: summaryData.systemStats.expiring,
+                expired: summaryData.systemStats.expired,
+                missingPO: summaryData.systemStats.missingPO
             }
         });
     } catch (error) {
@@ -240,61 +872,15 @@ router.get("/health", async (req, res) => {
  */
 router.get("/summary", async (req, res) => {
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const thirtyDaysFromNow = new Date(today);
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-        thirtyDaysFromNow.setHours(23, 59, 59, 999);
-
-        const [
-            custRes,
-            poRes,
-            unitRes,
-            expiringRes,
-            expiredRes,
-            missingPORes
-        ] = await Promise.all([
-            mcpMongoManager.count({ collection: "customers" }),
-            mcpMongoManager.count({ collection: "purchaseorders" }),
-            mcpMongoManager.count({ collection: "networkunits" }),
-            mcpMongoManager.count({
-                collection: "purchaseorders",
-                query: {
-                    $or: [
-                        { expiryDate: { $gte: today, $lte: thirtyDaysFromNow } },
-                        { supportExpiryDate: { $gte: today, $lte: thirtyDaysFromNow } }
-                    ]
-                }
-            }),
-            mcpMongoManager.count({
-                collection: "purchaseorders",
-                query: {
-                    $or: [
-                        { expiryDate: { $lt: today } },
-                        { supportExpiryDate: { $lt: today } }
-                    ]
-                }
-            }),
-            mcpMongoManager.count({
-                collection: "networkunits",
-                query: {
-                    $or: [
-                        { purchaseOrderId: null },
-                        { purchaseOrderId: { $exists: false } }
-                    ]
-                }
-            })
-        ]);
-
+        const summaryData = await runGetSystemSummary();
         return res.status(200).json({
             success: true,
-            customers: custRes?.count ?? 0,
-            purchaseOrders: poRes?.count ?? 0,
-            networkUnits: unitRes?.count ?? 0,
-            expiring: expiringRes?.count ?? 0,
-            expired: expiredRes?.count ?? 0,
-            missingPO: missingPORes?.count ?? 0
+            customers: summaryData.systemStats.customers,
+            purchaseOrders: summaryData.systemStats.purchaseOrders,
+            networkUnits: summaryData.systemStats.networkUnits,
+            expiring: summaryData.systemStats.expiring,
+            expired: summaryData.systemStats.expired,
+            missingPO: summaryData.systemStats.missingPO
         });
     } catch (error) {
         console.error("Assistant summary error:", error);
@@ -312,8 +898,10 @@ router.get("/summary", async (req, res) => {
 
 /**
  * POST /api/assistant/query
- * Translates natural-language questions into structured read-only MCP queries
- * across customers, purchaseorders, networkunits, and evalvalues.
+ * Resolves natural language prompts through:
+ *  1. Anthropic Claude Tool Calling (if ANTHROPIC_API_KEY is non-empty, omitting temperature and top_p)
+ *  2. Google Gemini Function Calling (if GEMINI_API_KEY is non-empty)
+ *  3. Resilient Read-Only MCP / Mongoose Engine (zero external keys needed)
  */
 router.post("/query", async (req, res) => {
     try {
@@ -324,6 +912,9 @@ router.post("/query", async (req, res) => {
                 success: false,
                 message: "Prompt is required",
                 summary: "Please provide a query or search prompt.",
+                records: [],
+                type: "empty",
+                engine: "Validation",
                 data: {
                     purchaseOrders: [],
                     customers: [],
@@ -336,659 +927,291 @@ router.post("/query", async (req, res) => {
         const trimmedPrompt = prompt.trim();
         const lowerPrompt = trimmedPrompt.toLowerCase();
 
-        // 1. Fetch customer and PO mapping for entity resolution & joining
-        const { customerMap, poMap, allCustomers } = await fetchEntityMaps();
+        // 1. Fetch entity maps for document enrichment & lookup
+        const context = await fetchEntityMaps();
+        const { allCustomers } = context;
         const mcpStatus = mcpMongoManager.getStatus();
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // =====================================================================
+        // PROVIDER 1: ANTHROPIC CLAUDE TOOL CALLING
+        // Activated automatically if process.env.ANTHROPIC_API_KEY is non-empty
+        // Model: process.env.CLAUDE_MODEL || "claude-haiku-5-5"
+        // Note: temperature and top_p are omitted as required.
+        // =====================================================================
+        if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY.trim()) {
+            try {
+                const claudeModel = process.env.CLAUDE_MODEL || "claude-haiku-5-5";
+                const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY.trim() });
 
-        const thirtyDaysFromNow = new Date(today);
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-        thirtyDaysFromNow.setHours(23, 59, 59, 999);
+                const response = await anthropic.messages.create({
+                    model: claudeModel,
+                    max_tokens: 1024,
+                    system: "You are the Candela Network Support & Renewal Intelligence Agent. You help users query customers, purchase orders, network units, and support contract expirations by calling the provided read-only tools.",
+                    messages: [{ role: "user", content: trimmedPrompt }],
+                    tools: CLAUDE_TOOLS
+                });
 
-        // 2. Perform NLP classification
-        const nlp = await transferNaturalLanguageQuery(trimmedPrompt);
+                // Find tool call in response
+                const toolBlock = response.content?.find(b => b.type === "tool_use");
+                if (toolBlock) {
+                    const toolName = toolBlock.name;
+                    const toolArgs = toolBlock.input || {};
+                    const queryResult = await executeTool(toolName, toolArgs, context);
+
+                    const textPart = response.content
+                        .filter(b => b.type === "text")
+                        .map(b => b.text)
+                        .join(" ")
+                        .trim();
+
+                    return res.status(200).json({
+                        ...queryResult,
+                        prompt: trimmedPrompt,
+                        summary: textPart || queryResult.summary,
+                        engine: `Anthropic Claude (${claudeModel})`
+                    });
+                }
+
+                // Direct textual answer from Claude without tool call
+                const directText = response.content
+                    .filter(b => b.type === "text")
+                    .map(b => b.text)
+                    .join("\n")
+                    .trim();
+
+                if (directText) {
+                    return res.status(200).json({
+                        success: true,
+                        prompt: trimmedPrompt,
+                        summary: directText,
+                        records: [],
+                        type: "conversational",
+                        engine: `Anthropic Claude (${claudeModel})`,
+                        customers: [],
+                        purchaseOrders: [],
+                        networkUnits: [],
+                        evalValues: [],
+                        count: { customers: 0, purchaseOrders: 0, networkUnits: 0, total: 0 }
+                    });
+                }
+            } catch (claudeErr) {
+                console.warn("[Claude Tool Calling Error, falling through to Gemini / Local Engine]:", claudeErr.message);
+            }
+        }
+
+        // =====================================================================
+        // PROVIDER 2: GOOGLE GEMINI FUNCTION CALLING
+        // Activated if process.env.GEMINI_API_KEY is set during development
+        // Model: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"
+        // =====================================================================
+        if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim()) {
+            try {
+                const geminiModel = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+                const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY.trim() });
+
+                const geminiRes = await ai.models.generateContent({
+                    model: geminiModel,
+                    contents: trimmedPrompt,
+                    config: {
+                        tools: GEMINI_TOOLS
+                    }
+                });
+
+                if (geminiRes.functionCalls && geminiRes.functionCalls.length > 0) {
+                    const call = geminiRes.functionCalls[0];
+                    const queryResult = await executeTool(call.name, call.args || {}, context);
+
+                    return res.status(200).json({
+                        ...queryResult,
+                        prompt: trimmedPrompt,
+                        engine: `Google Gemini (${geminiModel})`
+                    });
+                }
+
+                if (geminiRes.text) {
+                    return res.status(200).json({
+                        success: true,
+                        prompt: trimmedPrompt,
+                        summary: geminiRes.text.trim(),
+                        records: [],
+                        type: "conversational",
+                        engine: `Google Gemini (${geminiModel})`,
+                        customers: [],
+                        purchaseOrders: [],
+                        networkUnits: [],
+                        evalValues: [],
+                        count: { customers: 0, purchaseOrders: 0, networkUnits: 0, total: 0 }
+                    });
+                }
+            } catch (geminiErr) {
+                console.warn("[Gemini Function Calling Error, falling through to Local Engine]:", geminiErr.message);
+            }
+        }
+
+        // =====================================================================
+        // PROVIDER 3: RESILIENT LOCAL READ-ONLY MCP & MONGOOSE ENGINE
+        // Works out-of-the-box with ZERO API keys or external billing.
+        // Direct tool invocation based on NLP intent & company token recognition.
+        // =====================================================================
+        const localEngineName = mcpStatus.connected
+            ? "Model Context Protocol (MCP) Read-Only Engine"
+            : "Mongoose Resilient Engine (MCP Initializing/Fallback)";
+
+        // Perform NLP token extraction
+        const nlp = await transferNaturalLanguageQuery(trimmedPrompt).catch(() => ({ intent: "GENERAL" }));
         let { intent, targetCustomer, nDays, subFilters } = nlp;
 
-        // If targetCustomer wasn't detected by nlpService, check allCustomers directly against prompt
+        // Company detection across customer list
         if (!targetCustomer && allCustomers.length > 0) {
             for (const cust of allCustomers) {
                 const cName = (cust.name || "").toLowerCase().trim();
                 if (cName.length >= 3 && lowerPrompt.includes(cName)) {
                     targetCustomer = cust;
-                    intent = "COMPANY_DOSSIER";
                     break;
                 }
             }
         }
 
-        // ==================================================================
-        // CASE 1: COUNT & SUMMARY QUERIES
-        // Phrases: "how many customers/POs/units", "summary", "stats", "overview"
-        // ==================================================================
+        // PRIORITY CASE 1: Customer Mentioned (e.g., "give me the pos of Capgemini", "units of Comcast")
+        if (targetCustomer) {
+            const result = await runGetCustomerDossier({ companyName: targetCustomer.name }, context);
+            return res.status(200).json({
+                ...result,
+                prompt: trimmedPrompt,
+                engine: localEngineName,
+                nlp: {
+                    intent: intent || "COMPANY_DOSSIER",
+                    resolvedCompany: targetCustomer.name
+                }
+            });
+        }
+
+        // CASE 2: System Stats / Overview / Summary
         if (
             intent === "SYSTEM_STATS" ||
             /\b(how\s*many|summary|overview|stats|system\s*stats|total\s*(?:counts?|pos?|units?|customers?))\b/i.test(lowerPrompt)
         ) {
-            const [
-                custCount,
-                poCount,
-                unitCount,
-                expiringCount,
-                expiredCount,
-                missingPOCount,
-                rmaCount
-            ] = await Promise.all([
-                mcpMongoManager.count({ collection: "customers" }),
-                mcpMongoManager.count({ collection: "purchaseorders" }),
-                mcpMongoManager.count({ collection: "networkunits" }),
-                mcpMongoManager.count({
-                    collection: "purchaseorders",
-                    query: {
-                        $or: [
-                            { expiryDate: { $gte: today, $lte: thirtyDaysFromNow } },
-                            { supportExpiryDate: { $gte: today, $lte: thirtyDaysFromNow } }
-                        ]
-                    }
-                }),
-                mcpMongoManager.count({
-                    collection: "purchaseorders",
-                    query: {
-                        $or: [
-                            { expiryDate: { $lt: today } },
-                            { supportExpiryDate: { $lt: today } }
-                        ]
-                    }
-                }),
-                mcpMongoManager.count({
-                    collection: "networkunits",
-                    query: {
-                        $or: [
-                            { purchaseOrderId: null },
-                            { purchaseOrderId: { $exists: false } }
-                        ]
-                    }
-                }),
-                mcpMongoManager.count({
-                    collection: "networkunits",
-                    query: {
-                        $or: [
-                            { hostname: { $regex: "rma", $options: "i" } },
-                            { unitCode: { $regex: "rma", $options: "i" } }
-                        ]
-                    }
-                })
-            ]);
-
-            const c = custCount?.count ?? 0;
-            const p = poCount?.count ?? 0;
-            const u = unitCount?.count ?? 0;
-            const exp = expiringCount?.count ?? 0;
-            const past = expiredCount?.count ?? 0;
-            const noPo = missingPOCount?.count ?? 0;
-            const rma = rmaCount?.count ?? 0;
-
-            const summary = `MCP Summary: Tracking ${c} customer${c === 1 ? "" : "s"}, ${p} purchase order${p === 1 ? "" : "s"} (${exp} expiring in 30 days, ${past} expired), and ${u} network unit${u === 1 ? "" : "s"} (${noPo} without PO, ${rma} RMA).`;
-
+            const result = await runGetSystemSummary();
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "system_stats",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                systemStats: {
-                    customers: c,
-                    purchaseOrders: p,
-                    networkUnits: u,
-                    expiring: exp,
-                    expired: past,
-                    missingPO: noPo,
-                    rma
-                },
-                count: {
-                    customers: c,
-                    purchaseOrders: p,
-                    networkUnits: u,
-                    total: c + p + u
-                },
-                customers: [],
-                purchaseOrders: [],
-                networkUnits: [],
-                evalValues: []
+                engine: localEngineName
             });
         }
 
-        // ==================================================================
-        // CASE 2: MISSING PO & RMA QUERIES
-        // Phrases: "missing po", "without po", "null po", "no po", "rma"
-        // ==================================================================
-        const isRmaQuery = intent === "RMA" || /\b(rma|damaged|defective|returned)\b/i.test(lowerPrompt);
-        const isWithoutPoQuery = intent === "WITHOUT_PO" || /\b(missing\s*po|without\s*po|null\s*po|no\s*po|unassigned\s*units?)\b/i.test(lowerPrompt);
-
-        if (isRmaQuery) {
-            const filter = {
-                $or: [
-                    { hostname: { $regex: "rma", $options: "i" } },
-                    { unitCode: { $regex: "rma", $options: "i" } }
-                ]
-            };
-            const result = await mcpMongoManager.find({
-                collection: "networkunits",
-                filter,
-                limit: 200
-            });
-
-            const formattedUnits = (result?.documents || []).map(u => formatNetworkUnit(u, customerMap, poMap));
-            const summary = formattedUnits.length === 0
-                ? "MCP Query: No RMA units found in current fleet."
-                : `MCP Query: Found ${formattedUnits.length} RMA unit${formattedUnits.length === 1 ? "" : "s"} flagged for return or hardware replacement.`;
-
+        // CASE 3: RMA Defect Hardware Query
+        if (intent === "RMA" || /\b(rma|defective|damaged|returned)\b/i.test(lowerPrompt)) {
+            const result = await runQueryNetworkUnits({ isRMA: true }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "rma_units",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: [],
-                networkUnits: formattedUnits,
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: 0,
-                    networkUnits: formattedUnits.length,
-                    total: formattedUnits.length
-                }
+                engine: localEngineName
             });
         }
 
-        if (isWithoutPoQuery) {
-            const filter = {
-                $or: [
-                    { purchaseOrderId: null },
-                    { purchaseOrderId: { $exists: false } }
-                ]
-            };
-            const result = await mcpMongoManager.find({
-                collection: "networkunits",
-                filter,
-                limit: 200
-            });
-
-            const formattedUnits = (result?.documents || []).map(u => formatNetworkUnit(u, customerMap, poMap));
-            const summary = formattedUnits.length === 0
-                ? "MCP Query: All network units are currently linked to active Purchase Orders."
-                : `MCP Query: Found ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"} without an assigned Purchase Order.`;
-
+        // CASE 4: Missing PO / Unassigned Units Query
+        if (
+            intent === "WITHOUT_PO" ||
+            /\b(missing\s*po|without\s*po|null\s*po|no\s*po|unassigned\s*units?)\b/i.test(lowerPrompt)
+        ) {
+            const result = await runQueryNetworkUnits({ hasPO: false }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "without_po",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: [],
-                networkUnits: formattedUnits,
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: 0,
-                    networkUnits: formattedUnits.length,
-                    total: formattedUnits.length
-                }
+                engine: localEngineName
             });
         }
 
-        // ==================================================================
-        // CASE 3: EXPIRY & RENEWAL QUERIES
-        // Phrases: "expiring soon", "expiring in 30 days", "expiring within N days",
-        // "expired", "active POs", "no expiry", "renewed", "unrenewed"
-        // ==================================================================
+        // CASE 5: Expiry & Renewal Status Queries
         const isExpiring = intent === "EXPIRING" || /\b(expiring|expire|lapse|lapsing|upcoming\s*expir|due\s*for\s*renewal)\b/i.test(lowerPrompt);
         const isExpired = intent === "EXPIRED" || /\b(expired|lapsed|past\s*due|overdue|terminated)\b/i.test(lowerPrompt);
         const isActive = intent === "ACTIVE" || /\b(active\s*(?:pos?|contracts?|orders?)|active)\b/i.test(lowerPrompt);
         const isNoExpiry = intent === "NO_EXPIRY" || /\b(no\s*expiry|without\s*expiry|missing\s*expiry|no\s*date)\b/i.test(lowerPrompt);
 
         if (isExpiring) {
-            const days = nDays || 30;
-            const targetDate = new Date(today);
-            targetDate.setDate(targetDate.getDate() + days);
-            targetDate.setHours(23, 59, 59, 999);
-
-            const filter = {
-                $or: [
-                    { expiryDate: { $gte: today, $lte: targetDate } },
-                    { supportExpiryDate: { $gte: today, $lte: targetDate } }
-                ]
-            };
-
-            const result = await mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter,
-                sort: { expiryDate: 1, supportExpiryDate: 1 },
-                limit: 200
-            });
-
-            const formattedPOs = (result?.documents || []).map(po => formatPurchaseOrder(po, customerMap));
-            const summary = formattedPOs.length === 0
-                ? `MCP Query: No purchase orders found expiring within ${days} days.`
-                : `MCP Query: Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"} expiring within ${days} days.`;
-
+            const result = await runQueryPurchaseOrders({ status: "expiring", maxDaysRemaining: nDays || 30 }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "expiring",
-                nDays: days,
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: formattedPOs,
-                networkUnits: [],
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: formattedPOs.length,
-                    networkUnits: 0,
-                    total: formattedPOs.length
-                }
+                engine: localEngineName
             });
         }
 
         if (isExpired) {
-            const filter = {
-                $or: [
-                    { expiryDate: { $lt: today } },
-                    { supportExpiryDate: { $lt: today } }
-                ]
-            };
-
-            const result = await mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter,
-                sort: { expiryDate: -1, supportExpiryDate: -1 },
-                limit: 200
-            });
-
-            const formattedPOs = (result?.documents || []).map(po => formatPurchaseOrder(po, customerMap));
-            const summary = formattedPOs.length === 0
-                ? "MCP Query: No expired purchase orders found."
-                : `MCP Query: Found ${formattedPOs.length} expired purchase order${formattedPOs.length === 1 ? "" : "s"} past their support end date.`;
-
+            const result = await runQueryPurchaseOrders({ status: "expired" }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "expired",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: formattedPOs,
-                networkUnits: [],
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: formattedPOs.length,
-                    networkUnits: 0,
-                    total: formattedPOs.length
-                }
+                engine: localEngineName
             });
         }
 
         if (isActive) {
-            const filter = {
-                $or: [
-                    { expiryDate: { $gt: thirtyDaysFromNow } },
-                    { supportExpiryDate: { $gt: thirtyDaysFromNow } }
-                ]
-            };
-
-            const result = await mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter,
-                sort: { expiryDate: 1, supportExpiryDate: 1 },
-                limit: 200
-            });
-
-            const formattedPOs = (result?.documents || []).map(po => formatPurchaseOrder(po, customerMap));
-            const summary = formattedPOs.length === 0
-                ? "MCP Query: No active contracts found beyond the next 30 days."
-                : `MCP Query: Found ${formattedPOs.length} active purchase order${formattedPOs.length === 1 ? "" : "s"} with valid support coverage.`;
-
+            const result = await runQueryPurchaseOrders({ status: "active" }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "active",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: formattedPOs,
-                networkUnits: [],
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: formattedPOs.length,
-                    networkUnits: 0,
-                    total: formattedPOs.length
-                }
+                engine: localEngineName
             });
         }
 
         if (isNoExpiry) {
-            const filter = {
-                $or: [
-                    { expiryDate: null },
-                    { expiryDate: { $exists: false } },
-                    { supportExpiryDate: null },
-                    { supportExpiryDate: { $exists: false } }
-                ]
-            };
-
-            const result = await mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter,
-                limit: 200
-            });
-
-            const formattedPOs = (result?.documents || []).map(po => formatPurchaseOrder(po, customerMap));
-            const summary = formattedPOs.length === 0
-                ? "MCP Query: All purchase orders have documented expiry dates."
-                : `MCP Query: Found ${formattedPOs.length} purchase order${formattedPOs.length === 1 ? "" : "s"} with no recorded expiry date.`;
-
+            const result = await runQueryPurchaseOrders({ status: "no-date" }, context);
             return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "no_expiry",
+                ...result,
                 prompt: trimmedPrompt,
-                summary,
-                customers: [],
-                purchaseOrders: formattedPOs,
-                networkUnits: [],
-                evalValues: [],
-                count: {
-                    customers: 0,
-                    purchaseOrders: formattedPOs.length,
-                    networkUnits: 0,
-                    total: formattedPOs.length
-                }
+                engine: localEngineName
             });
         }
 
-        // ==================================================================
-        // CASE 4: CUSTOMER-SCOPED LOOKUP
-        // Detected Customer (e.g. Comcast, Juniper, Capgemini, TataElxsi, etc.)
-        // ==================================================================
-        if (targetCustomer) {
-            const cId = String(targetCustomer._id);
-            const cName = targetCustomer.name;
-
-            const [poResult, unitResult, evalResult] = await Promise.all([
-                mcpMongoManager.aggregate({
-                    collection: "purchaseorders",
-                    pipeline: [
-                        { $match: { $expr: { $eq: [{ $toString: "$customerId" }, cId] } } },
-                        { $sort: { expiryDate: 1 } },
-                        { $limit: 200 }
-                    ]
-                }),
-                mcpMongoManager.aggregate({
-                    collection: "networkunits",
-                    pipeline: [
-                        { $match: { $expr: { $eq: [{ $toString: "$customerId" }, cId] } } },
-                        { $limit: 300 }
-                    ]
-                }),
-                mcpMongoManager.find({
-                    collection: "evalvalues",
-                    filter: { customer: { $regex: escapeRegex(cName), $options: "i" } },
-                    limit: 100
-                })
-            ]);
-
-            const formattedPOs = (poResult?.documents || []).map(po => formatPurchaseOrder(po, customerMap));
-            const formattedUnits = (unitResult?.documents || []).map(u => formatNetworkUnit(u, customerMap, poMap));
-            const formattedEvals = evalResult?.documents || [];
-
-            let activeCount = 0;
-            let expiringCount = 0;
-            let expiredCount = 0;
-            formattedPOs.forEach(p => {
-                if (p.status === "active") activeCount++;
-                else if (p.status === "expiring") expiringCount++;
-                else if (p.status === "expired") expiredCount++;
-            });
-
-            const assignedUnits = formattedUnits.filter(u => u.hasPO).length;
-            const unassignedUnits = formattedUnits.length - assignedUnits;
-
-            const summary = `MCP Entity Resolved: ${cName}. Found ${formattedPOs.length} Purchase Order${formattedPOs.length === 1 ? "" : "s"} (${activeCount} active, ${expiringCount} expiring, ${expiredCount} expired), and ${formattedUnits.length} Network Unit${formattedUnits.length === 1 ? "" : "s"} (${assignedUnits} assigned, ${unassignedUnits} unassigned)${formattedEvals.length > 0 ? `, plus ${formattedEvals.length} eval unit(s)` : ""}.`;
-
-            return res.status(200).json({
-                success: true,
-                mcpPowered: true,
-                engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                queryType: "company",
-                prompt: trimmedPrompt,
-                company: cName,
-                summary,
-                companyDetails: {
-                    customer: targetCustomer,
-                    stats: {
-                        totalPOs: formattedPOs.length,
-                        activePOs: activeCount,
-                        expiringPOs: expiringCount,
-                        expiredPOs: expiredCount,
-                        totalUnits: formattedUnits.length,
-                        assignedUnits,
-                        unassignedUnits
-                    }
-                },
-                customers: [targetCustomer],
-                purchaseOrders: formattedPOs,
-                networkUnits: formattedUnits,
-                evalValues: formattedEvals,
-                count: {
-                    customers: 1,
-                    purchaseOrders: formattedPOs.length,
-                    networkUnits: formattedUnits.length,
-                    evalValues: formattedEvals.length,
-                    total: formattedPOs.length + formattedUnits.length + formattedEvals.length
-                }
-            });
-        }
-
-        // ==================================================================
-        // CASE 5: PO NUMBER LOOKUP
-        // e.g. "find PO 202021", "PO 202021", "202021"
-        // ==================================================================
+        // CASE 6: PO Number Lookup
         const poMatch = subFilters?.poNumber || lowerPrompt.match(/\b(?:po|order)?\s*#?\s*([0-9]{4,10}|[A-Z0-9_\-]{4,15})\b/i)?.[1];
         if (poMatch && poMatch.length >= 3 && !/\b(days?|weeks?|units?|customers?)\b/i.test(poMatch)) {
-            const poResult = await mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter: { poNumber: { $regex: escapeRegex(poMatch), $options: "i" } },
-                limit: 50
-            });
-
-            if (poResult?.documents && poResult.documents.length > 0) {
-                const formattedPOs = poResult.documents.map(p => formatPurchaseOrder(p, customerMap));
-                const poIds = formattedPOs.map(p => String(p._id));
-
-                const unitResult = await mcpMongoManager.aggregate({
-                    collection: "networkunits",
-                    pipeline: [
-                        {
-                            $match: {
-                                $expr: {
-                                    $in: [{ $toString: "$purchaseOrderId" }, poIds]
-                                }
-                            }
-                        },
-                        { $limit: 100 }
-                    ]
-                });
-
-                const formattedUnits = (unitResult?.documents || []).map(u => formatNetworkUnit(u, customerMap, poMap));
-                const summary = `MCP Query: Found ${formattedPOs.length} Purchase Order${formattedPOs.length === 1 ? "" : "s"} matching '${poMatch}' with ${formattedUnits.length} linked network unit${formattedUnits.length === 1 ? "" : "s"}.`;
-
+            const result = await runQueryPurchaseOrders({ poNumber: poMatch }, context);
+            if (result.records.length > 0) {
                 return res.status(200).json({
-                    success: true,
-                    mcpPowered: true,
-                    engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                    queryType: "purchase_order",
+                    ...result,
                     prompt: trimmedPrompt,
-                    summary,
-                    customers: [],
-                    purchaseOrders: formattedPOs,
-                    networkUnits: formattedUnits,
-                    evalValues: [],
-                    count: {
-                        customers: 0,
-                        purchaseOrders: formattedPOs.length,
-                        networkUnits: formattedUnits.length,
-                        total: formattedPOs.length + formattedUnits.length
-                    }
+                    engine: localEngineName
                 });
             }
         }
 
-        // ==================================================================
-        // CASE 6: UNIT CODE OR HOSTNAME LOOKUP
-        // e.g. "CT523c", "AT7", "candela-rma-01"
-        // ==================================================================
+        // CASE 7: Unit Code / Hostname Lookup
         const codeToken = subFilters?.unitCode || subFilters?.hostname;
         const candidateToken = codeToken || lowerPrompt.replace(/^(show|find|search|lookup|get|units?|of|for|all)\s+/i, "").trim();
-
         if (candidateToken && candidateToken.length >= 2) {
-            const unitResult = await mcpMongoManager.find({
-                collection: "networkunits",
-                filter: {
-                    $or: [
-                        { unitCode: { $regex: escapeRegex(candidateToken), $options: "i" } },
-                        { hostname: { $regex: escapeRegex(candidateToken), $options: "i" } }
-                    ]
-                },
-                limit: 100
-            });
-
-            if (unitResult?.documents && unitResult.documents.length > 0) {
-                const formattedUnits = unitResult.documents.map(u => formatNetworkUnit(u, customerMap, poMap));
-                const summary = `MCP Query: Found ${formattedUnits.length} network unit${formattedUnits.length === 1 ? "" : "s"} matching '${candidateToken}'.`;
-
+            const result = await runQueryNetworkUnits({ unitCode: candidateToken }, context);
+            if (result.records.length > 0) {
                 return res.status(200).json({
-                    success: true,
-                    mcpPowered: true,
-                    engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-                    queryType: "network_units",
+                    ...result,
                     prompt: trimmedPrompt,
-                    summary,
-                    customers: [],
-                    purchaseOrders: [],
-                    networkUnits: formattedUnits,
-                    evalValues: [],
-                    count: {
-                        customers: 0,
-                        purchaseOrders: 0,
-                        networkUnits: formattedUnits.length,
-                        total: formattedUnits.length
-                    }
+                    engine: localEngineName
                 });
             }
         }
 
-        // ==================================================================
-        // CASE 7: GENERAL SEARCH FALLBACK (Across all collections)
-        // ==================================================================
-        const safeRegex = escapeRegex(trimmedPrompt);
-        const [custRes, poRes, unitRes, evalRes] = await Promise.all([
-            mcpMongoManager.find({
-                collection: "customers",
-                filter: { name: { $regex: safeRegex, $options: "i" } },
-                limit: 20
-            }),
-            mcpMongoManager.find({
-                collection: "purchaseorders",
-                filter: {
-                    $or: [
-                        { poNumber: { $regex: safeRegex, $options: "i" } },
-                        { invoiceNumber: { $regex: safeRegex, $options: "i" } },
-                        { notes: { $regex: safeRegex, $options: "i" } }
-                    ]
-                },
-                limit: 50
-            }),
-            mcpMongoManager.find({
-                collection: "networkunits",
-                filter: {
-                    $or: [
-                        { unitCode: { $regex: safeRegex, $options: "i" } },
-                        { hostname: { $regex: safeRegex, $options: "i" } },
-                        { radioConfiguration: { $regex: safeRegex, $options: "i" } }
-                    ]
-                },
-                limit: 50
-            }),
-            mcpMongoManager.find({
-                collection: "evalvalues",
-                filter: {
-                    $or: [
-                        { customer: { $regex: safeRegex, $options: "i" } },
-                        { unit: { $regex: safeRegex, $options: "i" } },
-                        { hostname: { $regex: safeRegex, $options: "i" } }
-                    ]
-                },
-                limit: 20
-            })
-        ]);
-
-        const formattedPOs = (poRes?.documents || []).map(p => formatPurchaseOrder(p, customerMap));
-        const formattedUnits = (unitRes?.documents || []).map(u => formatNetworkUnit(u, customerMap, poMap));
-        const matchedCustomers = custRes?.documents || [];
-        const matchedEvals = evalRes?.documents || [];
-
-        const totalFound = matchedCustomers.length + formattedPOs.length + formattedUnits.length + matchedEvals.length;
-        const summary = totalFound === 0
-            ? `MCP Query: No records matched '${trimmedPrompt}'. Try asking about specific customers, 'expiring in 30 days', 'without po', or 'rma units'.`
-            : `MCP Query: Found ${totalFound} total record${totalFound === 1 ? "" : "s"} (${matchedCustomers.length} customer${matchedCustomers.length === 1 ? "" : "s"}, ${formattedPOs.length} PO${formattedPOs.length === 1 ? "" : "s"}, ${formattedUnits.length} unit${formattedUnits.length === 1 ? "" : "s"}).`;
-
+        // CASE 8: General Search Fallback
+        const result = await runGeneralSearch(trimmedPrompt, context);
         return res.status(200).json({
-            success: true,
-            mcpPowered: true,
-            engine: mcpStatus.connected ? "Model Context Protocol (MCP) Read-Only Engine" : "Mongoose Resilient Engine (MCP Initializing/Fallback)",
-            queryType: "general_search",
+            ...result,
             prompt: trimmedPrompt,
-            summary,
-            customers: matchedCustomers,
-            purchaseOrders: formattedPOs,
-            networkUnits: formattedUnits,
-            evalValues: matchedEvals,
-            count: {
-                customers: matchedCustomers.length,
-                purchaseOrders: formattedPOs.length,
-                networkUnits: formattedUnits.length,
-                evalValues: matchedEvals.length,
-                total: totalFound
-            }
+            engine: localEngineName
         });
     } catch (err) {
         console.error("[Assistant Query Error]:", err);
         return res.status(200).json({
             success: true,
-            mcpPowered: true,
-            engine: "Mongoose Resilient Engine (Safety Net)",
-            queryType: "error_fallback",
-            prompt: req.body?.prompt || "",
             summary: "Encountered an unexpected issue running query. No records retrieved.",
+            records: [],
+            type: "error_fallback",
+            engine: "Mongoose Resilient Safety Net",
+            prompt: req.body?.prompt || "",
             customers: [],
             purchaseOrders: [],
             networkUnits: [],
             evalValues: [],
-            count: { customers: 0, purchaseOrders: 0, networkUnits: 0, total: 0 }
+            count: { customers: 0, purchaseOrders: 0, networkUnits: 0, evalValues: 0, total: 0 }
         });
     }
 });

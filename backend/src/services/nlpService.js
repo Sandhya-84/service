@@ -223,16 +223,29 @@ export const transferNaturalLanguageQuery = async (rawPrompt) => {
     // Try finding customer by candidate name
     let targetCustomer = candidateCompanyName ? await findMatchingCustomer(candidateCompanyName) : null;
 
+    // Check every meaningful token against registered customers if not yet resolved
+    if (!targetCustomer) {
+        for (const token of meaningfulTokens) {
+            if (token.length >= 3 && !STOPWORDS.has(token)) {
+                const candidate = await findMatchingCustomer(token);
+                if (candidate) {
+                    targetCustomer = candidate;
+                    break;
+                }
+            }
+        }
+    }
+
     // Only test entire prompt as customer name if prompt is short (<= 3 words, e.g. "Juniper", "Cisco Systems")
     if (!targetCustomer && rawTokens.length <= 3) {
         targetCustomer = await findMatchingCustomer(prompt);
     }
 
     // 3. Status & Condition Detection with comprehensive synonym expansion
-    const hasExpiring = /\b(expiring|expire|lapse|lapsing|due\s*for\s*renewal|upcoming\s*expir|nearing\s*expir|going\s*to\s*expire|going\s*to\s*lapse)\b/i.test(lower);
+    const hasExpiring = /\b(expiring|expire|lapse|lapsing|due\s*for\s*renewal|upcoming\s*expir|nearing\s*expir|going\s*to\s*expire|going\s*to\s*lapse|ending\s*soon|contracts?\s*ending)\b/i.test(lower);
     const hasExpired = /\b(expired|lapsed|past\s*due|overdue|terminated|out\s*of\s*support|ended)\b/i.test(lower) && !hasExpiring;
-    const hasActive = /\b(active\s*(?:pos?|contracts?|orders?)|active|valid|in\s*service|up\s*to\s*date)\b/i.test(lower);
-    const hasWithoutPO = /\b(without\s*(?:a\s*)?(?:po|purchase\s*order)|missing\s*po|no\s*po|unassigned\s*(?:units?|equipment|hardware|devices?)|orphan\s*units?|unlinked\s*units?|not\s*assigned\s*to\s*(?:any\s*)?po|doesn't\s*have\s*(?:any\s*)?purchase\s*order|no\s*order\s*attached)\b/i.test(lower);
+    const hasActive = /\b(active\s*(?:pos?|contracts?|orders?)|active|valid|in\s*service|up\s*to\s*date|in\s*good\s*standing)\b/i.test(lower);
+    const hasWithoutPO = /\b(without\s*(?:a\s*|any\s*|an\s*)?(?:po|purchase\s*order)|missing\s*(?:a\s*|any\s*|an\s*)?(?:po|purchase\s*order)|no\s*po|unassigned\s*(?:units?|equipment|hardware|devices?)|orphan\s*units?|unlinked\s*units?|not\s*assigned\s*to\s*(?:any\s*|a\s*)?po|doesn't\s*have\s*(?:any\s*)?purchase\s*order|no\s*order\s*attached|(?:hardware|equipment|units?|devices?)\s+without\s+(?:a\s*|any\s*|an\s*)?(?:po|purchase\s*order))\b/i.test(lower);
     const hasAssigned = /\b(assigned\s*units?|units\s*with\s*po|units\s*linked\s*to\s*po|linked\s*units?)\b/i.test(lower);
     const hasRenewed = /\b(renewed\s*(?:pos?|contracts?|orders?)?)\b/i.test(lower) && !/\b(not|un|un-)\b/i.test(lower);
     const hasUnrenewed = /\b(unrenewed|not\s*renewed|pending\s*renewal|un-renewed|needs?\s*renewal|awaiting\s*renewal)\b/i.test(lower);
@@ -241,10 +254,10 @@ export const transferNaturalLanguageQuery = async (rawPrompt) => {
     const hasRenewalHistory = /\b(renewal\s*history|renewals?\s*history|renewal\s*logs?|history\s*of\s*renewals?)\b/i.test(lower);
     const hasActivity = /\b(recent\s*activity|activity\s*logs?|audit\s*logs?|audit\s*trail|recent\s*logs?|latest\s*changes?|latest\s*actions?|changed\s*recently|recently\s*changed)\b/i.test(lower);
     const hasImports = /\b(recent\s*imports?|import\s*history|excel\s*imports?|data\s*imports?|uploaded\s*files?|recent\s*uploads?)\b/i.test(lower);
-    const hasStats = /\b(stats|system\s*stats|overview|metrics|how\s*many|total\s*(?:counts?|pos?|units?|customers?)|summary|dashboard\s*counts?)\b/i.test(lower);
-    const hasTopCustomers = /\b(top\s*(?:customers?|clients?|accounts?)|(?:customer|client)\s*ranking|(?:customer|client)\s*breakdown|largest\s*(?:customers?|clients?|accounts?)|biggest\s*(?:customers?|clients?|accounts?)|leaderboard)\b/i.test(lower);
+    const hasStats = /\b(stats|system\s*stats|overview|executive\s*overview|executive\s*summary|briefing|metrics|how\s*many|total\s*(?:counts?|pos?|units?|customers?)|summary|dashboard\s*counts?|fleet\s*health|fleet\s*status)\b/i.test(lower);
+    const hasTopCustomers = /\b(top\s*(?:customers?|clients?|accounts?)|(?:customer|client)\s*ranking|(?:customer|client)\s*breakdown|largest\s*(?:customers?|clients?|accounts?)|biggest\s*(?:customers?|clients?|accounts?)|leaderboard|most\s*(?:units|equipment|hardware|devices))\b/i.test(lower);
     const hasEval = /\b(eval|eval\s*units?|eval\s*values?|eval\s*data|lab\s*units?|lab\s*samples?)\b/i.test(lower);
-    const hasRMA = /\b(rma|return\s*merchandise|damaged|defective|returned)\b/i.test(lower);
+    const hasRMA = /\b(rma|return\s*merchandise|damaged|defective|returned|broken\s*(?:units?|devices?|equipment))\b/i.test(lower);
 
     // 4. Hardware and Technical Entity Detection
     const matchRadio = lower.match(/\b(?:radio|radios|radio\s*config|radio\s*configuration)\s*[:=]?\s*([a-zA-Z0-9_.\-\s]+)/i);
@@ -260,6 +273,8 @@ export const transferNaturalLanguageQuery = async (rawPrompt) => {
 
     if (targetCustomer) {
         intent = "COMPANY_DOSSIER";
+    } else if (matchPO && matchPO[1] && matchPO[1].length >= 3 && !/\b(days?|weeks?|units?|customers?)\b/i.test(matchPO[1])) {
+        intent = "PURCHASE_ORDER";
     } else if (hasStats) {
         intent = "SYSTEM_STATS";
     } else if (hasTopCustomers) {

@@ -1,0 +1,2 @@
+{"t":{"$date":"2026-11-24T11:51:34.810Z"},"s":"I","c":"MONGODB-MCP","id":1000004,"ctx":"server","msg":"Server started with transport StdioServerTransport"}
+{"t":{"$date":"2026-11-24T11:51:34.821Z"},"s":"D1","c":"MONGODB-MCP","id":1000006,"ctx":"tool","msg":"Executing connect with args: [{\"connectionStringOrClusterName\":\"<mongodb uri>"}
