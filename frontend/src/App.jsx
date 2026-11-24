@@ -37,7 +37,7 @@ const App = () => {
 
             <Routes>
 
-                {/* WINDOW 1: COMMAND CENTER LANDING PAGE */}
+                {/* COMMAND CENTER LANDING PAGE */}
 
                 <Route
                     path="/"
